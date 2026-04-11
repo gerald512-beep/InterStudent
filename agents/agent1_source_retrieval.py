@@ -12,9 +12,13 @@ from google import genai
 from config.persona import PERSONA_CONFIG
 
 load_dotenv()
-_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+_client = genai.Client(
+    vertexai=True,
+    project=os.environ.get("GOOGLE_CLOUD_PROJECT", "interstudent-nyc-2026"),
+    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+)
 
-EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_MODEL = "text-embedding-005"
 
 # ---------------------------------------------------------------------------
 # Constants
