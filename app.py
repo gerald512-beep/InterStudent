@@ -1,8 +1,12 @@
 import json
 import io
 import re
+import os
+from datetime import datetime
 import streamlit as st
 from PIL import Image
+
+VIDEO_SAVE_DIR = os.path.join(os.path.dirname(__file__), "videos")
 
 from agents.agent1_source_retrieval import retrieve
 from agents.agent2_content_generator import run_agent2
@@ -328,6 +332,15 @@ if st.session_state.phase in ("post_done", "video_done") and st.session_state.co
                     used_veo = st.session_state.video_output.get("used_veo", False)
                     msg = "Video assembled" + (" (Veo 3.1 hero clip included)" if used_veo else " (Imagen 4 Ultra multi-shot)")
                     st.write(msg)
+                    # Auto-save video to disk
+                    vb = st.session_state.video_output.get("video_bytes")
+                    if vb:
+                        os.makedirs(VIDEO_SAVE_DIR, exist_ok=True)
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        save_path = os.path.join(VIDEO_SAVE_DIR, f"influencer_{ts}.mp4")
+                        with open(save_path, "wb") as _f:
+                            _f.write(vb)
+                        st.write(f"Saved to: `{save_path}`")
                     _set_step("agent3", "done")
                 except Exception as e:
                     _set_step("agent3", "error")
