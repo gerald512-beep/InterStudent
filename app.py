@@ -377,12 +377,18 @@ if st.session_state.phase == "video_done" and st.session_state.video_output:
                 use_container_width=True,
             )
         elif video_output.get("thumbnail_bytes"):
-            st.image(
-                Image.open(io.BytesIO(video_output["thumbnail_bytes"])),
-                caption="Background (Imagen 4 Ultra)",
-                use_container_width=True,
-            )
-            st.info("Video encoding failed — showing scene image")
+            tb = video_output["thumbnail_bytes"]
+            # Only treat as image if it looks like PNG or JPEG (not MP4 video bytes)
+            is_image = tb[:2] == b"\xff\xd8" or tb[:4] == b"\x89PNG"
+            if is_image:
+                st.image(
+                    Image.open(io.BytesIO(tb)),
+                    caption="Background (Imagen 4 Ultra)",
+                    use_container_width=True,
+                )
+                st.info("Video encoding failed — showing scene image")
+            else:
+                st.info("Video unavailable")
         else:
             st.info("Video unavailable")
 
