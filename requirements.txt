@@ -1,0 +1,10 @@
+google-generativeai>=0.8.0
+google-adk>=0.1.0
+feedparser>=6.0.11
+trafilatura>=1.12.0
+requests>=2.32.0
+numpy>=1.26.0
+python-dotenv>=1.0.0
+streamlit>=1.40.0
+google-cloud-aiplatform>=1.70.0
+Pillow>=10.0.0
