@@ -338,6 +338,11 @@ def run_agent2(retrieval_pack: dict) -> dict:
     print("[agent2] Generating platform-specific post with CTA...")
     draft = generate_post(trend, persona, results)
 
+    # Ensure cta_links always has at least the primary source URL
+    if not draft.get("cta_links"):
+        primary_url = trend.get("primary_source_url", "")
+        draft["cta_links"] = [primary_url] if primary_url else []
+
     print("[agent2] Running QC check...")
     qc = quality_check(draft)
     print(f"  QC score: {qc.get('score')} | Approved: {qc.get('approved')}")

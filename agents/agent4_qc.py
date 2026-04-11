@@ -76,10 +76,10 @@ def evaluate_content(final_output: dict, video_output: dict) -> dict:
 
     script = video_output.get("script", "")
     storyboard = video_output.get("storyboard", [])
-    avatar_style = video_output.get("avatar_style", "")
+    avatar_style = video_output.get("avatar_description", "")
     background_info = ""
     if storyboard:
-        background_info = "; ".join(s.get("visual", "") for s in storyboard)
+        background_info = "; ".join(s.get("visual_prompt", "") for s in storyboard)
 
     criteria_list = "\n".join(
         f"- {name}: {desc}" for name, desc in QC_CRITERIA

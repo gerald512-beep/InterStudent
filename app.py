@@ -1,5 +1,6 @@
 import json
 import io
+import re
 import streamlit as st
 from PIL import Image
 
@@ -147,6 +148,7 @@ if reset_btn:
 # ---------------------------------------------------------------------------
 
 if phase1_btn:
+    st.session_state.phase = "running"
     st.divider()
     with st.status("Generating post and storyboard...", expanded=True) as status:
 
@@ -272,7 +274,7 @@ if st.session_state.phase in ("post_done", "video_done") and st.session_state.co
                         key=f"voice_{i}",
                     )
                 new_duration = st.slider(
-                    "Duration (seconds)",
+                    "Duration (seconds) — Veo clips cap at 8s",
                     min_value=5, max_value=12,
                     value=int(scene.get("duration_seconds", 8)),
                     key=f"dur_{i}",
@@ -381,8 +383,7 @@ if st.session_state.phase == "video_done" and st.session_state.video_output:
         st.markdown("**Script (SSML)**")
         ssml = video_output.get("script", "")
         # Show clean version without XML tags
-        import re as _re
-        clean_script = _re.sub(r"<[^>]+>", "", ssml).strip()
+        clean_script = re.sub(r"<[^>]+>", "", ssml).strip()
         st.markdown(f"_{clean_script}_")
 
         vb = st.session_state.content_draft.get("video_brief", {})

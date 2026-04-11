@@ -22,21 +22,22 @@ _client = genai.Client(vertexai=True, project=_PROJECT, location=_LOCATION)
 # ---------------------------------------------------------------------------
 
 def generate_image(image_prompt: str) -> bytes | None:
-    try:
-        model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
-        images = model.generate_images(
-            prompt=image_prompt,
-            number_of_images=1,
-            aspect_ratio="1:1",
-        )
-        if not images:
-            print("[storyteller] Imagen returned no images (content filter). Skipping.")
-            return None
-        print("[storyteller] Image generated via Imagen 3")
-        return images[0]._image_bytes
-    except Exception as exc:
-        print(f"[storyteller] Image generation failed: {exc}")
-        return None
+    for model_id in ["imagen-4.0-ultra-generate-001", "imagen-4.0-generate-001", "imagen-3.0-generate-001"]:
+        try:
+            model = ImageGenerationModel.from_pretrained(model_id)
+            images = model.generate_images(
+                prompt=image_prompt,
+                number_of_images=1,
+                aspect_ratio="9:16",
+            )
+            if not images:
+                print(f"[storyteller] {model_id} returned no images (content filter). Trying fallback...")
+                continue
+            print(f"[storyteller] Image generated via {model_id}")
+            return images[0]._image_bytes
+        except Exception as exc:
+            print(f"[storyteller] {model_id} failed: {exc}")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -57,12 +58,13 @@ Hashtags: {hashtags}
 Return only the final post text, formatted for {platform}."""
 
     if image_bytes:
+        mime_type = "image/jpeg" if image_bytes[:2] == b"\xff\xd8" else "image/png"
         contents = types.Content(
             role="user",
             parts=[
                 types.Part(text=prompt_text),
                 types.Part(
-                    inline_data=types.Blob(mime_type="image/png", data=image_bytes)
+                    inline_data=types.Blob(mime_type=mime_type, data=image_bytes)
                 ),
             ],
         )
