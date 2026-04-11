@@ -3,6 +3,7 @@ import re
 import json
 import uuid
 
+import time
 import feedparser
 import numpy as np
 import requests
@@ -12,13 +13,9 @@ from google import genai
 from config.persona import PERSONA_CONFIG
 
 load_dotenv()
-_client = genai.Client(
-    vertexai=True,
-    project=os.environ.get("GOOGLE_CLOUD_PROJECT", "interstudent-nyc-2026"),
-    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
-)
+_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
 
-EMBEDDING_MODEL = "text-embedding-005"
+EMBEDDING_MODEL = "gemini-embedding-001"
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -41,7 +38,7 @@ NYC_OPEN_DATA_BASE = "https://data.cityofnewyork.us/resource"
 # Ingestion Layer
 # ---------------------------------------------------------------------------
 
-def fetch_nyc_open_data(dataset_id: str, limit: int = 50) -> list[dict]:
+def fetch_nyc_open_data(dataset_id: str, limit: int = 10) -> list[dict]:
     url = f"{NYC_OPEN_DATA_BASE}/{dataset_id}.json"
     params = {"$limit": limit}
     try:
@@ -183,6 +180,9 @@ def chunk_document(doc: dict, chunk_size: int = 400, overlap: int = 50) -> list[
 # Embedder
 # ---------------------------------------------------------------------------
 
+EMBED_BATCH_SIZE = 50
+
+
 def embed_text(text: str) -> list[float]:
     result = _client.models.embed_content(
         model=EMBEDDING_MODEL,
@@ -192,11 +192,21 @@ def embed_text(text: str) -> list[float]:
 
 
 def embed_chunks(chunks: list[dict]) -> list[dict]:
-    for i, chunk in enumerate(chunks):
-        chunk["embedding"] = embed_text(chunk["chunk_text"])
-        if (i + 1) % 10 == 0:
-            print(f"[agent1] Embedded {i + 1}/{len(chunks)} chunks")
-    print(f"[agent1] Embedding complete: {len(chunks)} chunks")
+    total = len(chunks)
+    for batch_start in range(0, total, EMBED_BATCH_SIZE):
+        batch = chunks[batch_start: batch_start + EMBED_BATCH_SIZE]
+        texts = [c["chunk_text"] for c in batch]
+        result = _client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=texts,
+        )
+        for chunk, embedding in zip(batch, result.embeddings):
+            chunk["embedding"] = embedding.values
+        done = min(batch_start + EMBED_BATCH_SIZE, total)
+        print(f"[agent1] Embedded {done}/{total} chunks")
+        if done < total:
+            time.sleep(62)  # stay under 100 requests/min quota
+    print(f"[agent1] Embedding complete: {total} chunks")
     return chunks
 
 
