@@ -104,7 +104,7 @@ Your `run_agent2(retrieval_pack)` must return this exact shape for the Creative 
 
 Make sure your `.env` has:
 ```
-GOOGLE_API_KEY=AIzaSyDvJmaY_Ir2-kiWSt96qhJfdXboiynzq8w
+GOOGLE_API_KEY=AIzaSyA8Oe4K_oVhbcWdxtqaGOjwjhRcMxDkcWE
 GOOGLE_CLOUD_PROJECT=interstudent-nyc-2026
 GOOGLE_CLOUD_LOCATION=us-central1
 ```
