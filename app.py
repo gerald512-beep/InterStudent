@@ -369,6 +369,13 @@ if st.session_state.phase == "video_done" and st.session_state.video_output:
     with vcol1:
         if video_output.get("video_bytes"):
             st.video(video_output["video_bytes"])
+            st.download_button(
+                label="Download video (.mp4)",
+                data=video_output["video_bytes"],
+                file_name="influencer_video.mp4",
+                mime="video/mp4",
+                use_container_width=True,
+            )
         elif video_output.get("thumbnail_bytes"):
             st.image(
                 Image.open(io.BytesIO(video_output["thumbnail_bytes"])),
