@@ -7,21 +7,23 @@ import feedparser
 import numpy as np
 import requests
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 
 from config.persona import PERSONA_CONFIG
 
 load_dotenv()
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+
+EMBEDDING_MODEL = "gemini-embedding-001"
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 NYC_DATASETS = {
-    "kfnq-pz6f": "CUNY Enrollment",
-    "hg8x-zxpr": "NYC Job Postings",
-    "fhrw-4uyv": "311 Housing Complaints",
+    "erm2-nwe9": "311 Housing Complaints",
+    "kpav-sd4t": "NYC Job Postings",
+    "d44m-4xgv": "CUNY First Year Applications",
 }
 
 RSS_FEEDS = [
@@ -37,12 +39,9 @@ NYC_OPEN_DATA_BASE = "https://data.cityofnewyork.us/resource"
 
 def fetch_nyc_open_data(dataset_id: str, limit: int = 50) -> list[dict]:
     url = f"{NYC_OPEN_DATA_BASE}/{dataset_id}.json"
-    headers = {}
-    token = os.getenv("NYC_OPEN_DATA_APP_TOKEN", "")
-    if token:
-        headers["X-App-Token"] = token
+    params = {"$limit": limit}
     try:
-        resp = requests.get(url, headers=headers, params={"$limit": limit}, timeout=10)
+        resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
         records = resp.json()
     except Exception as exc:
@@ -105,9 +104,9 @@ def fetch_all_sources() -> list[dict]:
     docs: list[dict] = []
 
     print("[agent1] Fetching NYC Open Data...")
-    for dataset_id in NYC_DATASETS:
+    for dataset_id, name in NYC_DATASETS.items():
         batch = fetch_nyc_open_data(dataset_id)
-        print(f"  {NYC_DATASETS[dataset_id]}: {len(batch)} records")
+        print(f"  {name}: {len(batch)} records")
         docs.extend(batch)
 
     print("[agent1] Fetching RSS feeds...")
@@ -115,10 +114,6 @@ def fetch_all_sources() -> list[dict]:
         batch = fetch_rss_articles(feed_url)
         print(f"  {feed_url}: {len(batch)} articles")
         docs.extend(batch)
-
-        # Fallback: if RSS returned nothing, skip web scrape (too slow for MVP)
-        if len(batch) < 5:
-            print(f"  [agent1] Low RSS yield for {feed_url}, skipping scrape fallback")
 
     print(f"[agent1] Total documents fetched: {len(docs)}")
     return docs
@@ -185,11 +180,11 @@ def chunk_document(doc: dict, chunk_size: int = 400, overlap: int = 50) -> list[
 # ---------------------------------------------------------------------------
 
 def embed_text(text: str) -> list[float]:
-    result = genai.embed_content(
-        model="models/text-embedding-004",
-        content=text,
+    result = _client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text,
     )
-    return result["embedding"]
+    return result.embeddings[0].values
 
 
 def embed_chunks(chunks: list[dict]) -> list[dict]:
@@ -217,18 +212,14 @@ class VectorStore:
             return []
 
         query_embedding = np.array(embed_text(query))
-        scored: list[tuple[float, dict]] = []
-
         topic_weights = PERSONA_CONFIG["topics"]["weights"]
+        scored: list[tuple[float, dict]] = []
 
         for chunk in self.chunks:
             chunk_vec = np.array(chunk["embedding"])
-            score = float(
-                np.dot(query_embedding, chunk_vec)
-                / (np.linalg.norm(query_embedding) * np.linalg.norm(chunk_vec) + 1e-9)
-            )
+            norm = np.linalg.norm(query_embedding) * np.linalg.norm(chunk_vec)
+            score = float(np.dot(query_embedding, chunk_vec) / (norm + 1e-9))
 
-            # Apply topic weight boost
             for topic, weight in topic_weights.items():
                 if topic.lower() in chunk["chunk_text"].lower():
                     score *= (1 + weight)
@@ -279,7 +270,6 @@ def retrieve(query: str) -> dict:
         min_score=directives["min_relevance_score"],
     )
 
-    # If strict threshold returns nothing, relax and retry once
     if not results:
         print("[agent1] No results above threshold, relaxing min_score to 0.3")
         results = store.search(query=query, top_k=directives["top_k"], min_score=0.3)

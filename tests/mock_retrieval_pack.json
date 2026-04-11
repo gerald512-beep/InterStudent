@@ -1,0 +1,75 @@
+{
+  "query_topic": "housing costs for international students NYC",
+  "persona": {
+    "niche": "International students in NYC",
+    "audience": "International students aged 18-30 living in NYC",
+    "tone": "helpful, empowering, informative",
+    "content_goal": "surface inequities and share practical resources"
+  },
+  "results": [
+    {
+      "id": "b8722b70-d19c-4b1d-9c6d-92c65d559190",
+      "source_type": "article",
+      "title": "Plunging International Student Enrollment Under Trump Squeezes Colleges",
+      "content_chunk": "Plunging International Student Enrollment Under Trump Squeezes Colleges. The Trump administration’s campaign to curtail international students is not just hitting the elite schools targeted by the government.",
+      "published_at": "Mon, 06 Apr 2026 18:33:49 +0000",
+      "relevance_score": 0.6263,
+      "source_url": "https://www.nytimes.com/2026/04/06/us/international-students-decrease-under-trump.html",
+      "tags": [
+        "article"
+      ]
+    },
+    {
+      "id": "b3ddc08c-4b4c-41ca-9dd9-617a02a4772b",
+      "source_type": "nyc_open_data",
+      "title": "774233",
+      "content_chunk": " Affairs\", \"full_time_part_time_indicator\": \"F\", \"career_level\": \"Student\", \"salary_range_from\": \"20\", \"salary_range_to\": \"20\", \"salary_frequency\": \"Hourly\", \"work_location\": \"255 Greenwich Street\", \"division_work_unit\": \"Interns/Hourly Employees\", \"job_description\": \"TASK FORCE: \\t\\tIntergovernmental Relations  UNIT: \\t\\t\\tIntergovernmental Relations  JOB TITLE: \\t\\tOne (1) Summer Intern  CONTROL",
+      "published_at": "",
+      "relevance_score": 0.6185,
+      "source_url": "https://data.cityofnewyork.us/resource/kpav-sd4t",
+      "tags": [
+        "nyc_open_data",
+        "NYC Job Postings"
+      ]
+    },
+    {
+      "id": "82c9b7cd-8b57-4329-af71-afb7f9f72474",
+      "source_type": "nyc_open_data",
+      "title": "769071",
+      "content_chunk": " \"P\", \"career_level\": \"Student\", \"salary_range_from\": \"17.9\", \"salary_range_to\": \"26.73\", \"salary_frequency\": \"Hourly\", \"work_location\": \"100 Church St., N.Y.\", \"division_work_unit\": \"Admin Services\", \"job_description\": \"The New York City Law Department seeks applications from first and second year law school students for summer honors intern positions at the New York City Law Department to commen",
+      "published_at": "",
+      "relevance_score": 0.6062,
+      "source_url": "https://data.cityofnewyork.us/resource/kpav-sd4t",
+      "tags": [
+        "nyc_open_data",
+        "NYC Job Postings"
+      ]
+    },
+    {
+      "id": "72f2eaf7-fed8-47d1-8f47-851e75c55659",
+      "source_type": "nyc_open_data",
+      "title": "774202",
+      "content_chunk": "Finance, Accounting, & Procurement\", \"full_time_part_time_indicator\": \"F\", \"career_level\": \"Student\", \"salary_range_from\": \"17.5\", \"salary_range_to\": \"17.5\", \"salary_frequency\": \"Hourly\", \"work_location\": \"255 Greenwich Street\", \"division_work_unit\": \"Interns/Hourly Employees\", \"job_description\": \"TASK FORCE: \\t\\tEconomic Development  UNIT: \\t\\t\\tProject Development and Management  JOB TITLE: \\t\\t",
+      "published_at": "",
+      "relevance_score": 0.6035,
+      "source_url": "https://data.cityofnewyork.us/resource/kpav-sd4t",
+      "tags": [
+        "nyc_open_data",
+        "NYC Job Postings"
+      ]
+    },
+    {
+      "id": "d96c9d85-5781-4404-8e76-32db8f1d483d",
+      "source_type": "nyc_open_data",
+      "title": "773300",
+      "content_chunk": "s\", \"full_time_part_time_indicator\": \"F\", \"career_level\": \"Student\", \"salary_range_from\": \"17.5\", \"salary_range_to\": \"17.5\", \"salary_frequency\": \"Hourly\", \"work_location\": \"255 Greenwich Street\", \"division_work_unit\": \"Interns/Hourly Employees\", \"job_description\": \"TASK FORCE:\\tExecutive, Communications, IT, and Personnel Management and  Administration  UNIT:\\tEEO   JOB TITLE:\\tOne (1) College Aid",
+      "published_at": "",
+      "relevance_score": 0.6022,
+      "source_url": "https://data.cityofnewyork.us/resource/kpav-sd4t",
+      "tags": [
+        "nyc_open_data",
+        "NYC Job Postings"
+      ]
+    }
+  ]
+}
