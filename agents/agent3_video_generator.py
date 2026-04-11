@@ -260,8 +260,10 @@ def assemble_multishot_video(
         )
         from moviepy.video.fx import FadeIn, FadeOut
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = tempfile.mkdtemp()
+        try:
             clips = []
+            veo_file_clips = []  # track for explicit close before tmpdir cleanup
 
             for idx, (scene, clip_bytes) in enumerate(zip(scenes, scene_clip_bytes)):
                 voiceover = scene.get("voiceover", "")
@@ -274,6 +276,7 @@ def assemble_multishot_video(
                         f.write(clip_bytes)
 
                     veo_clip = VideoFileClip(scene_path)
+                    veo_file_clips.append(veo_clip)  # track for cleanup
 
                     # Resize to target dimensions if needed
                     if tuple(veo_clip.size) != VIDEO_SIZE:
@@ -345,6 +348,24 @@ def assemble_multishot_video(
 
             with open(output_path, "rb") as f:
                 video_bytes = f.read()
+
+            # Explicitly close all moviepy clips to release Windows file locks
+            try:
+                final_video.close()
+            except Exception:
+                pass
+            for vc in veo_file_clips:
+                try:
+                    vc.close()
+                except Exception:
+                    pass
+
+        finally:
+            import shutil
+            try:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            except Exception:
+                pass
 
         print(f"[agent3] Final video: {len(video_bytes)} bytes, {len(clips)} scenes")
         return video_bytes
