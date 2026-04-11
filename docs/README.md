@@ -6,8 +6,8 @@
 
 | Name | Role |
 |---|---|
-| [TEAM MEMBER 1] | Dev 1 — Agent 1 (Source Retrieval) |
-| [TEAM MEMBER 2] | Dev 2 — Agent 2 + Creative Output |
+| Kulbir Kaur | Dev 1 & Biz Strategy|
+| Gerald Velasquez| Dev 2  |
 
 ## What It Does
 
