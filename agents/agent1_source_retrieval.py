@@ -2,43 +2,167 @@ import os
 import re
 import json
 import uuid
-
 import time
+
 import feedparser
 import numpy as np
 import requests
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 from config.persona import PERSONA_CONFIG
 
 load_dotenv()
+
+# API key client — for embeddings only (Vertex AI embedding quota is 0 on new projects)
 _client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
 
+# Vertex AI client — for Google Search Grounding
+_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "interstudent-nyc-2026")
+_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+_vertex_client = genai.Client(vertexai=True, project=_PROJECT, location=_LOCATION)
+
 EMBEDDING_MODEL = "gemini-embedding-001"
+GROUNDING_MODEL = "gemini-2.5-flash"
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 NYC_DATASETS = {
-    "erm2-nwe9": "311 Housing Complaints",
     "kpav-sd4t": "NYC Job Postings",
     "d44m-4xgv": "CUNY First Year Applications",
+    "ic3t-wcy2": "NYC Living Wage",
 }
 
 RSS_FEEDS = [
-    "https://feeds.feedburner.com/ImmigrationProf",
-    "https://rss.nytimes.com/services/xml/rss/nyt/Education.xml",
+    # Tax / IRS
+    "https://www.irs.gov/rss/newsroom.rss",
+    # Consumer finance
+    "https://www.consumerfinance.gov/about-us/blog/feed/",
+    # Student financial aid policy
+    "https://www.nasfaa.org/rss/news",
+    # NYT Business (covers student finance, economy)
+    "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
+    # Loan providers — graceful fallback if feed unavailable
+    "https://www.prodigyfinance.com/blog/feed/",
+    "https://www.sofi.com/blog/feed/",
+    "https://www.earnest.com/blog/feed/",
+    "https://www.mpowerfinancing.com/blog/feed/",
 ]
 
 NYC_OPEN_DATA_BASE = "https://data.cityofnewyork.us/resource"
 
 # ---------------------------------------------------------------------------
-# Ingestion Layer
+# Static tax scenario knowledge seed
+# Injected on every run — covers common W-2 and F1/J1 tax scenarios
 # ---------------------------------------------------------------------------
 
-def fetch_nyc_open_data(dataset_id: str, limit: int = 10) -> list[dict]:
+TAX_SCENARIOS = [
+    {
+        "title": "F1 student W-2 from two different employers",
+        "content": "F1 student with W-2 from 2 different employers: file Form 1040-NR, report both W-2s on lines 1a and 1b. As an F1 student in first 5 years, you are a nonresident alien exempt from FICA (Social Security and Medicare) taxes while enrolled full-time. Both employers should not have withheld FICA — if they did, file Form 843 to claim a refund.",
+    },
+    {
+        "title": "F1 student W-2 from two different states",
+        "content": "F1 student with W-2 from 2 different states: file one federal Form 1040-NR plus a separate state income tax return for each state where you earned income. For example, if you worked in New York and New Jersey, file NY IT-203 (nonresident) and NJ 1040NR. New York requires filing if you earned income in NY even as a nonresident.",
+    },
+    {
+        "title": "J1 scholar stipend plus W-2 income",
+        "content": "J1 scholar receiving stipend plus W-2 wages: the W-2 wages are always taxable. The stipend may be partially or fully exempt under a US tax treaty depending on your home country — check IRS Publication 901 for your country's treaty. File Form 1040-NR and attach Form 8833 if claiming treaty benefits.",
+    },
+    {
+        "title": "OPT income and FICA taxes",
+        "content": "OPT (Optional Practical Training) income: F1 students on OPT remain nonresident aliens exempt from FICA taxes for the first 5 calendar years in the US. Once you become a resident alien for tax purposes (typically after 5 years), OPT income becomes subject to FICA. File Form 1040-NR if still a nonresident, Form 1040 if resident alien.",
+    },
+    {
+        "title": "ITIN application for international students without SSN",
+        "content": "International students without a Social Security Number (SSN) need an Individual Taxpayer Identification Number (ITIN) to file US taxes. Apply using Form W-7 with your tax return. Required documents: passport, F1/J1 visa, I-20 or DS-2019. Processing takes 7-11 weeks. You can apply through an IRS-authorized Certifying Acceptance Agent at many CUNY and NYU campuses.",
+    },
+    {
+        "title": "Opening a US bank account as an international student",
+        "content": "International students can open US bank accounts without an SSN at many banks using passport and I-20. Chase, Bank of America, and Citibank accept ITIN or foreign tax ID. Online options: Wise, Revolut, and Mercury accept international students. Credit unions like CUNY's preferred partners often have lower fees. Avoid monthly fees by maintaining minimum balance or using student accounts.",
+    },
+    {
+        "title": "Building US credit history as an international student",
+        "content": "International students can build US credit history using: secured credit cards (Discover it Secured, Capital One Secured), becoming an authorized user on a friend's account, or using credit-builder programs like Self. Some banks (Deserve EDU, Nova Credit) use international credit history. Avoid payday loans. A good credit score opens doors to apartments, loans, and better interest rates after graduation.",
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# 1. Google Search Grounding (primary source)
+# ---------------------------------------------------------------------------
+
+GROUNDING_QUERIES = [
+    "banking account options for F1 visa international student NYC 2025 no SSN",
+    "scholarships grants for international students NYC universities 2025",
+    "W-2 taxes F1 J1 visa nonresident alien form 1040-NR multiple employers states",
+    "Prodigy Finance SoFi Earnest MPOWER international student loans review 2025",
+    "OPT CPT income tax obligations international students USA",
+]
+
+
+def fetch_grounded_search(query: str) -> list[dict]:
+    try:
+        response = _vertex_client.models.generate_content(
+            model=GROUNDING_MODEL,
+            contents=query,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.1,
+            ),
+        )
+
+        docs = []
+        candidate = response.candidates[0] if response.candidates else None
+        if not candidate:
+            return []
+
+        grounding = getattr(candidate, "grounding_metadata", None)
+        chunks = getattr(grounding, "grounding_chunks", []) if grounding else []
+
+        # Each grounding chunk becomes a source doc
+        for chunk in chunks:
+            web = getattr(chunk, "web", None)
+            if not web:
+                continue
+            title = getattr(web, "title", query[:80]) or query[:80]
+            uri = getattr(web, "uri", "") or ""
+            # Use the synthesized response text as content for this source
+            content = response.text[:800] if response.text else query
+            docs.append({
+                "id": str(uuid.uuid4()),
+                "source_type": "grounded_search",
+                "title": title,
+                "content_raw": content,
+                "published_at": "",
+                "source_url": uri,
+                "tags": ["grounded_search", "live"],
+                "relevance_score": 0.0,
+            })
+
+        # Deduplicate by URL
+        seen_urls: set[str] = set()
+        unique = []
+        for doc in docs:
+            if doc["source_url"] not in seen_urls:
+                seen_urls.add(doc["source_url"])
+                unique.append(doc)
+
+        return unique[:5]
+
+    except Exception as exc:
+        print(f"[agent1] Grounded search failed ({query[:50]}...): {exc}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 2. NYC Open Data (supplementary)
+# ---------------------------------------------------------------------------
+
+def fetch_nyc_open_data(dataset_id: str, limit: int = 5) -> list[dict]:
     url = f"{NYC_OPEN_DATA_BASE}/{dataset_id}.json"
     params = {"$limit": limit}
     try:
@@ -73,10 +197,14 @@ def _first_string_value(record: dict) -> str:
     return ""
 
 
+# ---------------------------------------------------------------------------
+# 3. RSS feeds (finance-specific)
+# ---------------------------------------------------------------------------
+
 def fetch_rss_articles(feed_url: str) -> list[dict]:
     try:
         feed = feedparser.parse(feed_url)
-        entries = feed.entries[:20]
+        entries = feed.entries[:15]
     except Exception as exc:
         print(f"[agent1] RSS fetch failed ({feed_url}): {exc}")
         return []
@@ -101,20 +229,55 @@ def fetch_rss_articles(feed_url: str) -> list[dict]:
     return docs
 
 
+# ---------------------------------------------------------------------------
+# 4. Tax scenario knowledge seed
+# ---------------------------------------------------------------------------
+
+def build_tax_scenario_docs() -> list[dict]:
+    docs = []
+    for scenario in TAX_SCENARIOS:
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "source_type": "knowledge_seed",
+            "title": scenario["title"],
+            "content_raw": scenario["content"],
+            "published_at": "",
+            "source_url": "https://www.irs.gov/individuals/international-taxpayers",
+            "tags": ["knowledge_seed", "taxes", "F1", "W-2"],
+            "relevance_score": 0.0,
+        })
+    return docs
+
+
+# ---------------------------------------------------------------------------
+# Aggregator
+# ---------------------------------------------------------------------------
+
 def fetch_all_sources() -> list[dict]:
     docs: list[dict] = []
 
-    print("[agent1] Fetching NYC Open Data...")
+    print("[agent1] Running Google Search Grounding queries...")
+    for query in GROUNDING_QUERIES:
+        batch = fetch_grounded_search(query)
+        print(f"  '{query[:50]}...': {len(batch)} results")
+        docs.extend(batch)
+
+    print("[agent1] Fetching finance RSS feeds...")
+    for feed_url in RSS_FEEDS:
+        batch = fetch_rss_articles(feed_url)
+        print(f"  {feed_url.split('/')[2]}: {len(batch)} articles")
+        docs.extend(batch)
+
+    print("[agent1] Fetching NYC Open Data (supplementary)...")
     for dataset_id, name in NYC_DATASETS.items():
         batch = fetch_nyc_open_data(dataset_id)
         print(f"  {name}: {len(batch)} records")
         docs.extend(batch)
 
-    print("[agent1] Fetching RSS feeds...")
-    for feed_url in RSS_FEEDS:
-        batch = fetch_rss_articles(feed_url)
-        print(f"  {feed_url}: {len(batch)} articles")
-        docs.extend(batch)
+    print("[agent1] Injecting tax scenario knowledge seed...")
+    seed_docs = build_tax_scenario_docs()
+    docs.extend(seed_docs)
+    print(f"  {len(seed_docs)} tax scenario docs added")
 
     print(f"[agent1] Total documents fetched: {len(docs)}")
     return docs
@@ -221,7 +384,7 @@ class VectorStore:
     def add(self, chunks: list[dict]) -> None:
         self.chunks.extend(chunks)
 
-    def search(self, query: str, top_k: int = 5, min_score: float = 0.6) -> list[dict]:
+    def search(self, query: str, top_k: int = 5, min_score: float = 0.55) -> list[dict]:
         if not self.chunks:
             return []
 
@@ -238,6 +401,10 @@ class VectorStore:
                 if topic.lower() in chunk["chunk_text"].lower():
                     score *= (1 + weight)
                     break
+
+            # Boost grounded search and knowledge seed results
+            if chunk["metadata"]["source_type"] in ("grounded_search", "knowledge_seed"):
+                score *= 1.15
 
             if score >= min_score:
                 scored.append((score, chunk))

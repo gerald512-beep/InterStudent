@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 .DS_Store
+*.jpeg
+*.jpg
+*.png
+*.mp4
+*.mp3

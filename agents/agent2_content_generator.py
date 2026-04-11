@@ -16,19 +16,25 @@ _client = genai.Client(
 )
 
 GENERATION_MODEL = "gemini-2.5-flash"
-MAX_POSTS_PER_RUN = 1
 
-SYSTEM_PROMPT = """You are an AI influencer creating content for international students in NYC.
-Tone: helpful, empowering, informative.
-Audience: international students aged 18-30 in NYC.
-Goal: surface real NYC data to help them navigate inequities.
+# Best Chirp3-HD voice names by gender
+CHIRP3_VOICES = {
+    "female": "en-US-Chirp3-HD-Aoede",   # warm, natural female
+    "male":   "en-US-Chirp3-HD-Orus",    # warm, conversational male
+}
+
+SYSTEM_PROMPT = """You are an AI influencer creating finance content for international students in NYC.
+Tone: helpful, empowering, urgent where needed.
+Audience: international students aged 18-30 in NYC (F1/J1 visa holders).
+Goal: surface real data and help them navigate US financial systems.
 
 Rules:
-- Lead with one surprising or urgent fact from the data
-- Include 1 actionable tip
-- End with a question to drive engagement
-- Keep under 250 words
-- Include 3-5 relevant hashtags starting with #"""
+- Lead with one surprising or urgent fact
+- Include 1-2 numbered actionable steps
+- End with a strong call-to-action with a source link
+- Include a closing engagement question
+- Include 3-5 relevant hashtags starting with #
+- Embed source URLs directly in the post body as clickable references"""
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +42,6 @@ Rules:
 # ---------------------------------------------------------------------------
 
 def _parse_json_response(text: str) -> dict:
-    """Extract JSON from a model response that may contain markdown code fences."""
     text = text.strip()
     match = re.search(r"```(?:json)?\s*([\s\S]+?)```", text)
     if match:
@@ -44,7 +49,6 @@ def _parse_json_response(text: str) -> dict:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # Return a safe fallback so the pipeline never crashes
         return {}
 
 
@@ -75,55 +79,85 @@ def detect_trend(results: list[dict]) -> dict:
         for r in results[:5]
     )[:3000]
 
-    prompt = f"""You are analyzing content about international students in NYC.
+    prompt = f"""You are analyzing finance content about international students in NYC.
 
 Given these content chunks:
 {combined}
 
-Identify the single most compelling trend, insight, or actionable fact
-that would resonate with international students aged 18-30.
+Identify the single most compelling financial trend, insight, or actionable fact
+that would help international students aged 18-30 navigate US money systems.
 
 Return ONLY a JSON object with exactly these keys:
 - topic_angle: string (compelling headline angle)
 - urgency: string ("low", "medium", or "high")
 - key_fact: string (the single most surprising or useful fact from the data)
-- suggested_platform: string ("linkedin" or "instagram")"""
+- suggested_platform: string ("linkedin" or "instagram")
+- primary_source_url: string (the most credible source URL from the data, or empty string)"""
 
     raw = _generate(prompt)
     result = _parse_json_response(raw)
 
     if not result:
         return {
-            "topic_angle": "International students face growing challenges in NYC",
+            "topic_angle": "International students are missing out on key financial benefits in NYC",
             "urgency": "medium",
-            "key_fact": results[0]["content_chunk"][:200] if results else "NYC data unavailable",
+            "key_fact": results[0]["content_chunk"][:200] if results else "NYC financial data unavailable",
             "suggested_platform": "linkedin",
+            "primary_source_url": results[0].get("source_url", "") if results else "",
         }
     return result
 
 
 # ---------------------------------------------------------------------------
-# 2. Content Generator
+# 2. Content Generator — platform-specific with CTA links
 # ---------------------------------------------------------------------------
 
 def generate_post(trend: dict, persona: dict, sources: list[dict], extra_instruction: str = "") -> dict:
     source_titles = [s["title"] for s in sources[:3]]
-    source_urls = [s["source_url"] for s in sources]
+    source_urls = [s["source_url"] for s in sources if s.get("source_url")]
+    primary_url = trend.get("primary_source_url") or (source_urls[0] if source_urls else "")
+    platform = trend.get("suggested_platform", "linkedin")
+
+    if platform == "linkedin":
+        format_instructions = """FORMAT FOR LINKEDIN:
+- Line 1: Bold hook (surprising fact, under 15 words)
+- Blank line
+- 2-3 sentences of context
+- Blank line
+- Numbered actionable steps (2-3 steps)
+- Blank line
+- → Full guide: [embed primary_source_url here as plain text]
+- Blank line
+- Engagement question ending with a ?
+- Blank line
+- Hashtags on the last line"""
+    else:
+        format_instructions = """FORMAT FOR INSTAGRAM:
+- Line 1: Emoji + bold punchy hook (max 10 words)
+- 2-3 short sentences (emoji-accented)
+- 👉 Link in bio for the full guide
+- 📌 Save this post — you'll need it!
+- Engagement question ending with ?
+- Hashtags (5 max, on last line)"""
 
     prompt = f"""{SYSTEM_PROMPT}
 
-Write a {persona['tone']} social media post for {persona['audience']}.
+Write a {persona.get('tone', 'helpful')} social media post for {persona.get('audience', 'international students in NYC')}.
 
 Topic angle: {trend['topic_angle']}
 Key fact: {trend['key_fact']}
-Platform: {trend.get('suggested_platform', 'linkedin')}
+Platform: {platform}
+Primary source URL to embed: {primary_url}
 Sources to reference: {source_titles}
 {extra_instruction}
 
+{format_instructions}
+
 Return ONLY a JSON object with these keys:
-- post_text: string (the full post body, under 250 words)
-- image_prompt: string (vivid visual scene for an image that complements this post, no text in the image, photorealistic)
-- platform: string ("linkedin" or "instagram")
+- post_text: string (the complete formatted post body including CTA with embedded link)
+- cta_links: list of strings (1-3 URLs embedded in the post for easy follower access)
+- image_prompt: string (vivid photorealistic scene for Imagen 4, no text in image, NYC finance theme)
+- platform: string ("{platform}")
 - hashtags: list of 3-5 strings each starting with #
 - topic: string (same as topic_angle)
 - sources: {json.dumps(source_urls[:3])}
@@ -134,10 +168,11 @@ Return ONLY a JSON object with these keys:
 
     if not result.get("post_text"):
         result = {
-            "post_text": raw[:500],
-            "image_prompt": "International students studying together in New York City, diverse group, warm lighting, urban background",
-            "platform": trend.get("suggested_platform", "linkedin"),
-            "hashtags": ["#InternationalStudents", "#NYC", "#StudentLife"],
+            "post_text": f"{trend['key_fact']}\n\nHere's what to do:\n1. Check your tax status with your DSO\n2. Review your W-2 forms carefully\n\n→ Full guide: {primary_url}\n\nWhat financial challenge are you facing right now?\n\n#InternationalStudents #NYC #F1Visa #StudentFinance",
+            "cta_links": [primary_url] if primary_url else [],
+            "image_prompt": "Diverse international student reviewing financial documents in a modern NYC coffee shop, warm lighting, professional atmosphere",
+            "platform": platform,
+            "hashtags": ["#InternationalStudents", "#NYC", "#F1Visa", "#StudentFinance"],
             "topic": trend.get("topic_angle", ""),
             "sources": source_urls[:3],
             "urgency": trend.get("urgency", "medium"),
@@ -150,19 +185,141 @@ Return ONLY a JSON object with these keys:
 # ---------------------------------------------------------------------------
 
 def quality_check(draft: dict) -> dict:
-    prompt = f"""Review this social media post for an international student audience in NYC.
+    platform = draft.get("platform", "linkedin")
+    prompt = f"""Review this {platform} social media post for international students in NYC.
 
 Post: {draft.get('post_text', '')}
 
-Score it 1-10 on accuracy, tone, and helpfulness.
+Score 1-10 on: accuracy, tone, CTA effectiveness, helpfulness.
 Return ONLY a JSON object: {{"approved": bool, "score": int, "reason": string}}
-Approve (approved: true) if score >= 7."""
+Approve (approved: true) if score >= 7.
+A strong CTA with an embedded link should push score higher."""
 
     raw = _generate(prompt)
     result = _parse_json_response(raw)
 
     if not result or "approved" not in result:
         return {"approved": True, "score": 7, "reason": "Auto-approved (QC parse error)"}
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 4. Video Brief Generator — 5 scenes, SSML script, Veo-ready prompts
+# ---------------------------------------------------------------------------
+
+def generate_video_brief(trend: dict, draft: dict, persona: dict) -> dict:
+    post_text = draft.get("post_text", "")
+    platform = draft.get("platform", "linkedin")
+    key_fact = trend.get("key_fact", "")
+    topic = trend.get("topic_angle", "")
+
+    prompt = f"""You are creating a 40-50 second multi-shot AI influencer video for international students in NYC.
+
+Topic: {topic}
+Key fact: {key_fact}
+Post summary: {post_text[:300]}
+Platform: {platform}
+Audience: international students aged 18-30 in NYC
+
+Create a 5-scene video with a realistic AI avatar. Each scene is a different shot.
+
+SCENE STRUCTURE:
+- Scene 1 (8s): Avatar INTRO — wide establishing shot, direct to camera, warm welcome
+- Scene 2 (9s): KEY FACT — medium closeup, avatar reacts with surprise/concern
+- Scene 3 (9s): ACTIONABLE TIP — medium shot, avatar gestures/explains
+- Scene 4 (8s): RESOURCE REVEAL — avatar points to info, NYC setting visible
+- Scene 5 (8s): CALL TO ACTION + OUTRO — direct camera, warm close, save/follow CTA
+
+VOICE SSML RULES:
+- Use <break time="300ms"/> between thoughts
+- Use <emphasis level="strong"> for key facts and numbers
+- Use <prosody rate="slow"> for critical advice
+- Use <prosody pitch="+2st"> for exciting/encouraging parts
+- Keep natural rhythm — avoid robotic pacing
+- Total script: 90-110 spoken words
+
+Return ONLY a JSON object with these keys:
+- ssml_script: string (FULL script in SSML, wrapped in <speak> tags, all 5 scenes concatenated)
+- voice_gender: string ("female" or "male")
+- storyboard: list of exactly 5 objects, each with:
+    - scene: int (1-5)
+    - camera_angle: string (e.g. "wide establishing shot", "medium closeup", "over-the-shoulder")
+    - visual_prompt: string (detailed Veo/Imagen prompt: avatar appearance, setting, lighting, action, photorealistic, 9:16, no text)
+    - voiceover: string (plain text portion of script for this scene — what the avatar says)
+    - duration_seconds: int (7-10)
+    - emotion: string (e.g. "warm and welcoming", "urgent and concerned", "encouraging")
+- avatar_description: string (consistent appearance across all scenes: age, ethnicity, clothing, hair, personality)
+- music_mood: string (e.g. "upbeat lo-fi", "calm inspiring", "energetic")"""
+
+    raw = _generate(prompt)
+    result = _parse_json_response(raw)
+
+    if not result.get("ssml_script") or not result.get("storyboard"):
+        fallback_script = f"""<speak>
+  <prosody rate="medium">Hey, international students in NYC!</prosody>
+  <break time="300ms"/>
+  <emphasis level="strong">This is something most people don't know.</emphasis>
+  <break time="400ms"/>
+  {key_fact}
+  <break time="400ms"/>
+  <prosody rate="slow">Here's exactly what you need to do.</prosody>
+  <break time="300ms"/>
+  First, check with your Designated School Official.
+  <break time="200ms"/>
+  Second, keep copies of all your financial documents.
+  <break time="400ms"/>
+  <emphasis level="strong">Drop a comment below</emphasis> — what financial challenge are you navigating right now?
+  <break time="300ms"/>
+  <prosody pitch="+2st">Save this video and follow for more NYC student finance tips!</prosody>
+</speak>"""
+        avatar_desc = "Young woman, South Asian appearance, warm smile, casual blazer over a simple top, natural makeup, friendly and approachable, mid-20s"
+        result = {
+            "ssml_script": fallback_script,
+            "voice_gender": "female",
+            "avatar_description": avatar_desc,
+            "music_mood": "upbeat lo-fi",
+            "storyboard": [
+                {
+                    "scene": 1, "camera_angle": "wide establishing shot",
+                    "visual_prompt": f"Photorealistic young South Asian woman, casual blazer, standing outdoors with NYC skyline in background, golden hour, speaking to camera, 9:16 vertical, no text",
+                    "voiceover": "Hey, international students in NYC! This is something most people don't know.",
+                    "duration_seconds": 8, "emotion": "warm and welcoming",
+                },
+                {
+                    "scene": 2, "camera_angle": "medium closeup",
+                    "visual_prompt": f"Photorealistic young South Asian woman, casual blazer, medium closeup, slightly raised eyebrows, animated expression, modern NYC cafe background, 9:16 vertical, no text",
+                    "voiceover": key_fact[:120],
+                    "duration_seconds": 9, "emotion": "urgent and informative",
+                },
+                {
+                    "scene": 3, "camera_angle": "medium shot",
+                    "visual_prompt": f"Photorealistic young South Asian woman, casual blazer, medium shot, gesturing with one hand while explaining, bright NYC street background, 9:16 vertical, no text",
+                    "voiceover": "Here's exactly what you need to do. First, check with your DSO. Second, keep all your financial documents.",
+                    "duration_seconds": 9, "emotion": "encouraging and clear",
+                },
+                {
+                    "scene": 4, "camera_angle": "over-the-shoulder",
+                    "visual_prompt": f"Photorealistic young South Asian woman, casual blazer, seen from behind looking at NYC skyline, then turning to camera, warm lighting, 9:16 vertical, no text",
+                    "voiceover": "The resources are out there — you just need to know where to look.",
+                    "duration_seconds": 8, "emotion": "reassuring",
+                },
+                {
+                    "scene": 5, "camera_angle": "direct closeup",
+                    "visual_prompt": f"Photorealistic young South Asian woman, casual blazer, direct camera closeup, warm smile, pointing at camera, NYC background blurred, 9:16 vertical, no text",
+                    "voiceover": "Drop a comment below with your question. Save this video and follow for more NYC student finance tips!",
+                    "duration_seconds": 8, "emotion": "excited and warm CTA",
+                },
+            ],
+        }
+
+    # Inject consistent avatar description into all scene visual prompts
+    avatar_desc = result.get("avatar_description", "")
+    if avatar_desc:
+        for scene in result.get("storyboard", []):
+            vp = scene.get("visual_prompt", "")
+            if avatar_desc[:40].lower() not in vp.lower():
+                scene["visual_prompt"] = f"{avatar_desc}, {vp}"
+
     return result
 
 
@@ -178,7 +335,7 @@ def run_agent2(retrieval_pack: dict) -> dict:
     trend = detect_trend(results)
     print(f"  Angle: {trend.get('topic_angle')} | Urgency: {trend.get('urgency')}")
 
-    print("[agent2] Generating post...")
+    print("[agent2] Generating platform-specific post with CTA...")
     draft = generate_post(trend, persona, results)
 
     print("[agent2] Running QC check...")
@@ -186,8 +343,13 @@ def run_agent2(retrieval_pack: dict) -> dict:
     print(f"  QC score: {qc.get('score')} | Approved: {qc.get('approved')}")
 
     if not qc.get("approved"):
-        print(f"  QC rejected. Reason: {qc.get('reason')}. Regenerating...")
-        draft = generate_post(trend, persona, results, extra_instruction=f"Previous version was rejected: {qc.get('reason')}. Fix this.")
+        print(f"  QC rejected: {qc.get('reason')}. Regenerating...")
+        draft = generate_post(trend, persona, results,
+                              extra_instruction=f"Previous rejected: {qc.get('reason')}. Fix this.")
+
+    print("[agent2] Generating 5-scene video brief with SSML...")
+    video_brief = generate_video_brief(trend, draft, persona)
+    draft["video_brief"] = video_brief
 
     print("[agent2] Done.")
     return draft
