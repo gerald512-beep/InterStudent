@@ -1,9 +1,11 @@
 import os
 import json
 import re
+import time
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai.errors import ClientError
 
 load_dotenv()
 
@@ -13,7 +15,7 @@ _client = genai.Client(
     location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
 )
 
-GENERATION_MODEL = "gemini-2.0-flash"
+GENERATION_MODEL = "gemini-2.5-flash"
 MAX_POSTS_PER_RUN = 1
 
 SYSTEM_PROMPT = """You are an AI influencer creating content for international students in NYC.
@@ -46,12 +48,21 @@ def _parse_json_response(text: str) -> dict:
         return {}
 
 
-def _generate(prompt: str) -> str:
-    response = _client.models.generate_content(
-        model=GENERATION_MODEL,
-        contents=prompt,
-    )
-    return response.text
+def _generate(prompt: str, retries: int = 3) -> str:
+    for attempt in range(retries):
+        try:
+            response = _client.models.generate_content(
+                model=GENERATION_MODEL,
+                contents=prompt,
+            )
+            return response.text
+        except ClientError as e:
+            if "429" in str(e) and attempt < retries - 1:
+                wait = 30 * (attempt + 1)
+                print(f"[agent2] Rate limited, retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
 
 
 # ---------------------------------------------------------------------------

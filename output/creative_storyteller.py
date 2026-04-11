@@ -4,6 +4,7 @@ import io
 import vertexai
 from vertexai.preview.vision_models import ImageGenerationModel
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,6 +29,9 @@ def generate_image(image_prompt: str) -> bytes | None:
             number_of_images=1,
             aspect_ratio="1:1",
         )
+        if not images:
+            print("[storyteller] Imagen returned no images (content filter). Skipping.")
+            return None
         print("[storyteller] Image generated via Imagen 3")
         return images[0]._image_bytes
     except Exception as exc:
@@ -44,30 +48,30 @@ def generate_interleaved_output(content_draft: dict, image_bytes: bytes | None) 
     post_text = content_draft.get("post_text", "")
     hashtags = " ".join(content_draft.get("hashtags", []))
 
-    if image_bytes:
-        contents = [
-            f"""You are finalizing a {platform} post for international students in NYC.
+    prompt_text = f"""You are finalizing a {platform} post for international students in NYC.
 Combine the text and the image context into a polished, ready-to-publish post.
 
 Post text: {post_text}
 Hashtags: {hashtags}
 
-Return only the final post text, formatted for {platform}.""",
-            {"mime_type": "image/png", "data": image_bytes},
-        ]
-    else:
-        contents = [
-            f"""Finalize this {platform} post for international students in NYC.
-
-Post text: {post_text}
-Hashtags: {hashtags}
-
 Return only the final post text, formatted for {platform}."""
-        ]
+
+    if image_bytes:
+        contents = types.Content(
+            role="user",
+            parts=[
+                types.Part(text=prompt_text),
+                types.Part(
+                    inline_data=types.Blob(mime_type="image/png", data=image_bytes)
+                ),
+            ],
+        )
+    else:
+        contents = prompt_text
 
     try:
         response = _client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=contents,
         )
         print("[storyteller] Interleaved output generated")
