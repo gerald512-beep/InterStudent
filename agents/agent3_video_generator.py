@@ -2,6 +2,7 @@ import os
 import io
 import time
 import tempfile
+from collections.abc import Callable
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFont
@@ -130,12 +131,16 @@ def generate_veo_scene_clip(visual_prompt: str, voiceover: str, duration_seconds
         return None
 
 
-def generate_all_veo_clips(storyboard: list[dict]) -> list[bytes | None]:
+def generate_all_veo_clips(
+    storyboard: list[dict],
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> list[bytes | None]:
     """
     Generate Veo clips for all scenes in parallel (up to 3 at a time).
     Each clip has the scene's voiceover embedded in the prompt for lip sync.
     """
     results = [None] * len(storyboard)
+    n = len(storyboard)
 
     def _gen(idx: int, scene: dict):
         return idx, generate_veo_scene_clip(
@@ -144,7 +149,8 @@ def generate_all_veo_clips(storyboard: list[dict]) -> list[bytes | None]:
             duration_seconds = int(scene.get("duration_seconds", 8)),
         )
 
-    print(f"[agent3] Launching {len(storyboard)} Veo scene clips in parallel (max 3 workers)...")
+    print(f"[agent3] Launching {n} Veo scene clips in parallel (max 3 workers)...")
+    completed = 0
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(_gen, i, scene): i for i, scene in enumerate(storyboard)}
         for future in as_completed(futures):
@@ -153,6 +159,13 @@ def generate_all_veo_clips(storyboard: list[dict]) -> list[bytes | None]:
                 results[idx] = clip_bytes
                 status = f"{len(clip_bytes)} bytes" if clip_bytes else "FAILED"
                 print(f"[agent3] Scene {idx + 1} Veo result: {status}")
+                completed += 1
+                if progress_callback and n > 0:
+                    pct = 20 + int(completed / n * 40)
+                    progress_callback(
+                        pct,
+                        f"🎬 Rendering scene {completed}/{n}... ⏳",
+                    )
             except Exception as exc:
                 print(f"[agent3] Scene future error: {exc}")
 
@@ -379,7 +392,10 @@ def assemble_multishot_video(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def run_agent3(content_draft: dict) -> dict:
+def run_agent3(
+    content_draft: dict,
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> dict:
     video_brief = content_draft.get("video_brief", {})
 
     if not video_brief:
@@ -390,14 +406,19 @@ def run_agent3(content_draft: dict) -> dict:
     voice_gender     = video_brief.get("voice_gender", "female")
     storyboard       = video_brief.get("storyboard", [])
     avatar_description = video_brief.get("avatar_description", "")
+    n_scenes         = max(len(storyboard), 1)
 
-    # 1. Chirp3-HD voice (full script, SSML)
+    # 1. Veo clips first (parallel) — progress ~20–60% via callback inside generate_all_veo_clips
+    if progress_callback:
+        progress_callback(20, "🎬 Generating video scenes... ⏳")
+    print("[agent3] Generating per-scene Veo clips (parallel)...")
+    scene_clip_bytes = generate_all_veo_clips(storyboard, progress_callback=progress_callback)
+
+    # 2. Chirp3-HD voice (full script, SSML) — after scenes so progress matches UX narrative
+    if progress_callback:
+        progress_callback(70, "🎙️ Generating voiceover... ⏳")
     print("[agent3] Synthesizing Chirp3-HD voice...")
     audio_bytes = synthesize_speech(ssml_script, voice_gender)
-
-    # 2. Generate one Veo clip per scene IN PARALLEL (dialogue in prompt → lip sync)
-    print("[agent3] Generating per-scene Veo clips (parallel)...")
-    scene_clip_bytes = generate_all_veo_clips(storyboard)
 
     # 3. For scenes where Veo failed, generate Imagen 4 Ultra fallback
     scenes_with_fallbacks = []
@@ -406,12 +427,20 @@ def run_agent3(content_draft: dict) -> dict:
         scene_data["image_bytes"] = None
         if not clip_bytes:
             print(f"[agent3] Scene {i + 1} Veo failed — generating Imagen 4 Ultra fallback...")
+            if progress_callback:
+                pct = 72 + min(7, int((i + 1) / n_scenes * 7))
+                progress_callback(pct, f"🖼️ Fallback image for scene {i + 1}/{n_scenes}... ⏳")
             scene_data["image_bytes"] = generate_scene_image(scene.get("visual_prompt", ""))
         scenes_with_fallbacks.append(scene_data)
 
     # 4. Assemble final multi-shot video
+    if progress_callback:
+        progress_callback(85, "🎬 Assembling final video... ⏳")
     print("[agent3] Assembling final multi-shot video...")
     video_bytes = assemble_multishot_video(scenes_with_fallbacks, scene_clip_bytes, audio_bytes)
+
+    if progress_callback:
+        progress_callback(95, "Finalizing output... ⏳")
 
     thumbnail_bytes = next(
         (b for b in scene_clip_bytes if b),  # use first successful Veo clip as thumbnail
@@ -429,4 +458,5 @@ def run_agent3(content_draft: dict) -> dict:
         "used_veo":          any(b for b in scene_clip_bytes),
         "veo_scenes":        sum(1 for b in scene_clip_bytes if b),
         "total_scenes":      len(storyboard),
+        "audience_persona":  content_draft.get("audience_persona"),
     }
