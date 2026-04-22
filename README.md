@@ -2,13 +2,6 @@
 
 AI-powered multi-agent pipeline that surfaces civic inequities and resources for international students in NYC — built for the NYC Build With AI Hackathon.
 
-## Team
-
-| Name | Role |
-|------|------|
-| Kulbir Kaur | Dev 1 & Biz Strategy |
-| Gerald Velasquez | Dev 2 |
-
 ## What it does
 
 1. Retrieves NYC Open Data, RSS, and grounded web sources relevant to international students.
