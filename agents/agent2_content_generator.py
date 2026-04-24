@@ -112,11 +112,18 @@ Return ONLY a JSON object with exactly these keys:
 # 2. Content Generator — platform-specific with CTA links
 # ---------------------------------------------------------------------------
 
-def generate_post(trend: dict, persona: dict, sources: list[dict], extra_instruction: str = "") -> dict:
+def generate_post(
+    trend: dict,
+    persona: dict,
+    sources: list[dict],
+    extra_instruction: str = "",
+    *,
+    forced_platform: str | None = None,
+) -> dict:
     source_titles = [s["title"] for s in sources[:3]]
     source_urls = [s["source_url"] for s in sources if s.get("source_url")]
     primary_url = trend.get("primary_source_url") or (source_urls[0] if source_urls else "")
-    platform = trend.get("suggested_platform", "linkedin")
+    platform = forced_platform or trend.get("suggested_platform", "linkedin")
 
     if platform == "linkedin":
         format_instructions = """FORMAT FOR LINKEDIN:
@@ -327,7 +334,7 @@ Return ONLY a JSON object with these keys:
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def run_agent2(retrieval_pack: dict) -> dict:
+def run_agent2(retrieval_pack: dict, *, forced_platform: str | None = None) -> dict:
     results = retrieval_pack.get("results", [])
     persona = retrieval_pack.get("persona", {})
 
@@ -336,7 +343,7 @@ def run_agent2(retrieval_pack: dict) -> dict:
     print(f"  Angle: {trend.get('topic_angle')} | Urgency: {trend.get('urgency')}")
 
     print("[agent2] Generating platform-specific post with CTA...")
-    draft = generate_post(trend, persona, results)
+    draft = generate_post(trend, persona, results, forced_platform=forced_platform)
 
     # Ensure cta_links always has at least the primary source URL
     if not draft.get("cta_links"):
@@ -350,7 +357,8 @@ def run_agent2(retrieval_pack: dict) -> dict:
     if not qc.get("approved"):
         print(f"  QC rejected: {qc.get('reason')}. Regenerating...")
         draft = generate_post(trend, persona, results,
-                              extra_instruction=f"Previous rejected: {qc.get('reason')}. Fix this.")
+                              extra_instruction=f"Previous rejected: {qc.get('reason')}. Fix this.",
+                              forced_platform=forced_platform)
 
     print("[agent2] Generating 5-scene video brief with SSML...")
     video_brief = generate_video_brief(trend, draft, persona)

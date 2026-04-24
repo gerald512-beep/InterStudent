@@ -204,7 +204,8 @@ def _first_string_value(record: dict) -> str:
 def fetch_rss_articles(feed_url: str) -> list[dict]:
     try:
         feed = feedparser.parse(feed_url)
-        entries = feed.entries[:15]
+        # Keep RSS lightweight so embeddings stay fast in local demo runs.
+        entries = feed.entries[:5]
     except Exception as exc:
         print(f"[agent1] RSS fetch failed ({feed_url}): {exc}")
         return []
@@ -433,12 +434,35 @@ def retrieve(query: str) -> dict:
     directives = PERSONA_CONFIG["retrieval_directives"]
     audience = PERSONA_CONFIG["audience"]
 
-    docs = fetch_all_sources()
+    # For interactive UI flows, keep retrieval bounded and fast.
+    # We ground directly on the user's selected topic (highest signal),
+    # then add a small amount of supplemental data.
+    docs: list[dict] = []
+
+    print("[agent1] Grounding search on selected topic...")
+    docs.extend(fetch_grounded_search(query))
+
+    print("[agent1] Fetching a small RSS sample...")
+    for feed_url in RSS_FEEDS[:2]:
+        docs.extend(fetch_rss_articles(feed_url))
+
+    print("[agent1] Fetching NYC Open Data (small sample)...")
+    for dataset_id in list(NYC_DATASETS.keys())[:2]:
+        docs.extend(fetch_nyc_open_data(dataset_id, limit=3))
+
+    print("[agent1] Injecting tax scenario knowledge seed...")
+    docs.extend(build_tax_scenario_docs())
+
     docs = normalize(docs)
 
     all_chunks: list[dict] = []
     for doc in docs:
         all_chunks.extend(chunk_document(doc))
+
+    # Cap the number of chunks we embed to keep response time reasonable in the
+    # React + FastAPI synchronous request. This also avoids hitting embedding
+    # rate limits that force long sleeps.
+    all_chunks = all_chunks[:50]
 
     all_chunks = embed_chunks(all_chunks)
 

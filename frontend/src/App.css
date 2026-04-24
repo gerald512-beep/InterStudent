@@ -1,0 +1,222 @@
+/* App-specific styling for the new React UI */
+
+.page {
+  min-height: 100svh;
+  padding: 24px 16px 48px;
+  background:
+    radial-gradient(1000px 500px at 20% 0%, rgba(0, 209, 255, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 80% 10%, rgba(170, 59, 255, 0.22), transparent 55%),
+    radial-gradient(700px 500px at 50% 100%, rgba(255, 170, 60, 0.16), transparent 55%);
+}
+
+.container {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-color-scheme: dark) {
+  .topbar {
+    background: rgba(18, 19, 26, 0.55);
+  }
+}
+
+.brandTitle {
+  margin: 0;
+  letter-spacing: -0.4px;
+}
+
+.brandTagline {
+  margin-top: 4px;
+  opacity: 0.8;
+  font-size: 14px;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-h);
+  background:
+    linear-gradient(135deg, rgba(170, 59, 255, 0.95), rgba(0, 209, 255, 0.85));
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(170, 59, 255, 0.18);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.05);
+  box-shadow: 0 16px 36px rgba(170, 59, 255, 0.24);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  filter: none;
+}
+
+.btnSecondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.card {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-color-scheme: dark) {
+  .card {
+    background: rgba(18, 19, 26, 0.55);
+  }
+}
+
+.cardTitle {
+  margin: 0 0 12px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.select,
+.textarea,
+.input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--text-h);
+  outline: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .select,
+  .textarea,
+  .input {
+    background: rgba(22, 23, 29, 0.75);
+  }
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.pillRow {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  user-select: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pill {
+    background: rgba(22, 23, 29, 0.45);
+  }
+}
+
+.pillActive {
+  border-color: rgba(0, 209, 255, 0.55);
+  box-shadow: 0 0 0 4px rgba(0, 209, 255, 0.12);
+}
+
+.errorBox {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(220, 38, 38, 0.5);
+  border-radius: 14px;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.mediaGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .mediaGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.img {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.muted {
+  opacity: 0.8;
+  font-size: 14px;
+}
+
+.details {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  .details {
+    background: rgba(22, 23, 29, 0.35);
+  }
+}
+
+.summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
