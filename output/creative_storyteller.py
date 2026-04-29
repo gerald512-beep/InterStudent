@@ -7,6 +7,8 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
+from audience_personalization import interleaved_persona_hint
+
 load_dotenv()
 
 _PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "interstudent-nyc-2026")
@@ -48,9 +50,14 @@ def generate_interleaved_output(content_draft: dict, image_bytes: bytes | None) 
     platform = content_draft.get("platform", "linkedin")
     post_text = content_draft.get("post_text", "")
     hashtags = " ".join(content_draft.get("hashtags", []))
+    persona = content_draft.get("audience_persona") or {}
+    hint = interleaved_persona_hint(persona)
 
     prompt_text = f"""You are finalizing a {platform} post for international students in NYC.
 Combine the text and the image context into a polished, ready-to-publish post.
+Adapt tone, pacing, and CTA to the audience hints below.
+
+Audience / style hints: {hint}
 
 Post text: {post_text}
 Hashtags: {hashtags}

@@ -7,6 +7,12 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai.errors import ClientError
 
+from audience_personalization import (
+    effective_audience_line,
+    effective_tone,
+    persona_prompt_block,
+)
+
 load_dotenv()
 
 _client = genai.Client(
@@ -73,13 +79,24 @@ def _generate(prompt: str, retries: int = 3) -> str:
 # 1. Trend Detector
 # ---------------------------------------------------------------------------
 
-def detect_trend(results: list[dict]) -> dict:
+def detect_trend(results: list[dict], persona: dict | None = None) -> dict:
     combined = "\n\n".join(
         f"[{r['source_type']}] {r['title']}: {r['content_chunk']}"
         for r in results[:5]
     )[:3000]
 
+    persona_hint = persona_prompt_block(persona)
+    platform_hint = ""
+    if persona and persona.get("platform_style"):
+        platform_hint = (
+            f"\nPrefer a platform angle aligned with: {persona.get('platform_style')}. "
+            "Set suggested_platform to linkedin or instagram accordingly when it fits."
+        )
+
     prompt = f"""You are analyzing finance content about international students in NYC.
+
+{persona_hint}
+{platform_hint}
 
 Given these content chunks:
 {combined}
@@ -124,6 +141,9 @@ def generate_post(
     source_urls = [s["source_url"] for s in sources if s.get("source_url")]
     primary_url = trend.get("primary_source_url") or (source_urls[0] if source_urls else "")
     platform = forced_platform or trend.get("suggested_platform", "linkedin")
+    tone = effective_tone(persona)
+    audience_line = effective_audience_line(persona)
+    persona_block = persona_prompt_block(persona)
 
     if platform == "linkedin":
         format_instructions = """FORMAT FOR LINKEDIN:
@@ -147,15 +167,29 @@ def generate_post(
 - Engagement question ending with ?
 - Hashtags (5 max, on last line)"""
 
+    cta_hint = ""
+    if persona:
+        cta_hint = (
+            f"Primary CTA style requested: {persona.get('cta_preference', 'Visit resource links')}. "
+            f"Risk tolerance: {persona.get('risk_tolerance', 'Balanced')} — keep claims responsible."
+        )
+        if persona.get("include_language_support") and persona.get("languages"):
+            cta_hint += (
+                f" Optionally note available languages for resources: {', '.join(persona['languages'])}."
+            )
+
     prompt = f"""{SYSTEM_PROMPT}
 
-Write a {persona.get('tone', 'helpful')} social media post for {persona.get('audience', 'international students in NYC')}.
+{persona_block}
+
+Write a {tone} social media post for {audience_line}.
 
 Topic angle: {trend['topic_angle']}
 Key fact: {trend['key_fact']}
 Platform: {platform}
 Primary source URL to embed: {primary_url}
 Sources to reference: {source_titles}
+{cta_hint}
 {extra_instruction}
 
 {format_instructions}
@@ -219,14 +253,22 @@ def generate_video_brief(trend: dict, draft: dict, persona: dict) -> dict:
     platform = draft.get("platform", "linkedin")
     key_fact = trend.get("key_fact", "")
     topic = trend.get("topic_angle", "")
+    persona_block = persona_prompt_block(persona)
+    tone = effective_tone(persona)
+    audience_line = effective_audience_line(persona)
+    avatar_style = (persona or {}).get("avatar_style", "Friendly peer creator")
 
     prompt = f"""You are creating a 40-50 second multi-shot AI influencer video for international students in NYC.
+
+{persona_block}
 
 Topic: {topic}
 Key fact: {key_fact}
 Post summary: {post_text[:300]}
 Platform: {platform}
-Audience: international students aged 18-30 in NYC
+Tone: {tone}
+Audience: {audience_line}
+Avatar style: {avatar_style} — reflect this in avatar_description and scene emotions.
 
 Create a 5-scene video with a realistic AI avatar. Each scene is a different shot.
 
@@ -339,7 +381,7 @@ def run_agent2(retrieval_pack: dict, *, forced_platform: str | None = None) -> d
     persona = retrieval_pack.get("persona", {})
 
     print("[agent2] Detecting trend...")
-    trend = detect_trend(results)
+    trend = detect_trend(results, persona)
     print(f"  Angle: {trend.get('topic_angle')} | Urgency: {trend.get('urgency')}")
 
     print("[agent2] Generating platform-specific post with CTA...")
@@ -356,13 +398,18 @@ def run_agent2(retrieval_pack: dict, *, forced_platform: str | None = None) -> d
 
     if not qc.get("approved"):
         print(f"  QC rejected: {qc.get('reason')}. Regenerating...")
-        draft = generate_post(trend, persona, results,
-                              extra_instruction=f"Previous rejected: {qc.get('reason')}. Fix this.",
-                              forced_platform=forced_platform)
+        draft = generate_post(
+            trend,
+            persona,
+            results,
+            extra_instruction=f"Previous rejected: {qc.get('reason')}. Fix this.",
+            forced_platform=forced_platform,
+        )
 
     print("[agent2] Generating 5-scene video brief with SSML...")
     video_brief = generate_video_brief(trend, draft, persona)
     draft["video_brief"] = video_brief
+    draft["audience_persona"] = persona
 
     print("[agent2] Done.")
     return draft

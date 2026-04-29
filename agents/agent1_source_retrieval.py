@@ -15,13 +15,16 @@ from config.persona import PERSONA_CONFIG
 
 load_dotenv()
 
-# API key client — for embeddings only (Vertex AI embedding quota is 0 on new projects)
-_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-
-# Vertex AI client — for Google Search Grounding
+# Vertex AI client — for Google Search Grounding + optional embeddings fallback
 _PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "interstudent-nyc-2026")
 _LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
 _vertex_client = genai.Client(vertexai=True, project=_PROJECT, location=_LOCATION)
+
+# Embeddings: prefer GOOGLE_API_KEY (AI Studio) when set; otherwise use Vertex (same model)
+_api_key = (os.getenv("GOOGLE_API_KEY") or "").strip()
+_embed_client = (
+    genai.Client(api_key=_api_key) if _api_key else _vertex_client
+)
 
 EMBEDDING_MODEL = "gemini-embedding-001"
 GROUNDING_MODEL = "gemini-2.5-flash"
@@ -204,8 +207,7 @@ def _first_string_value(record: dict) -> str:
 def fetch_rss_articles(feed_url: str) -> list[dict]:
     try:
         feed = feedparser.parse(feed_url)
-        # Keep RSS lightweight so embeddings stay fast in local demo runs.
-        entries = feed.entries[:5]
+        entries = feed.entries[:15]
     except Exception as exc:
         print(f"[agent1] RSS fetch failed ({feed_url}): {exc}")
         return []
@@ -348,7 +350,7 @@ EMBED_BATCH_SIZE = 50
 
 
 def embed_text(text: str) -> list[float]:
-    result = _client.models.embed_content(
+    result = _embed_client.models.embed_content(
         model=EMBEDDING_MODEL,
         contents=text,
     )
@@ -360,7 +362,7 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
     for batch_start in range(0, total, EMBED_BATCH_SIZE):
         batch = chunks[batch_start: batch_start + EMBED_BATCH_SIZE]
         texts = [c["chunk_text"] for c in batch]
-        result = _client.models.embed_content(
+        result = _embed_client.models.embed_content(
             model=EMBEDDING_MODEL,
             contents=texts,
         )
@@ -434,35 +436,12 @@ def retrieve(query: str) -> dict:
     directives = PERSONA_CONFIG["retrieval_directives"]
     audience = PERSONA_CONFIG["audience"]
 
-    # For interactive UI flows, keep retrieval bounded and fast.
-    # We ground directly on the user's selected topic (highest signal),
-    # then add a small amount of supplemental data.
-    docs: list[dict] = []
-
-    print("[agent1] Grounding search on selected topic...")
-    docs.extend(fetch_grounded_search(query))
-
-    print("[agent1] Fetching a small RSS sample...")
-    for feed_url in RSS_FEEDS[:2]:
-        docs.extend(fetch_rss_articles(feed_url))
-
-    print("[agent1] Fetching NYC Open Data (small sample)...")
-    for dataset_id in list(NYC_DATASETS.keys())[:2]:
-        docs.extend(fetch_nyc_open_data(dataset_id, limit=3))
-
-    print("[agent1] Injecting tax scenario knowledge seed...")
-    docs.extend(build_tax_scenario_docs())
-
+    docs = fetch_all_sources()
     docs = normalize(docs)
 
     all_chunks: list[dict] = []
     for doc in docs:
         all_chunks.extend(chunk_document(doc))
-
-    # Cap the number of chunks we embed to keep response time reasonable in the
-    # React + FastAPI synchronous request. This also avoids hitting embedding
-    # rate limits that force long sleeps.
-    all_chunks = all_chunks[:50]
 
     all_chunks = embed_chunks(all_chunks)
 
