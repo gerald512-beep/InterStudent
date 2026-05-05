@@ -23,12 +23,13 @@ _client = genai.Client(vertexai=True, project=_PROJECT, location=_LOCATION)
 # Image generation via Imagen 3
 # ---------------------------------------------------------------------------
 
-def generate_image(image_prompt: str) -> bytes | None:
+def generate_image(image_prompt: str, avatar_description: str = "") -> bytes | None:
+    full_prompt = f"{avatar_description}. Scene context: {image_prompt}" if avatar_description else image_prompt
     for model_id in ["imagen-4.0-ultra-generate-001", "imagen-4.0-generate-001", "imagen-3.0-generate-001"]:
         try:
             model = ImageGenerationModel.from_pretrained(model_id)
             images = model.generate_images(
-                prompt=image_prompt,
+                prompt=full_prompt,
                 number_of_images=1,
                 aspect_ratio="9:16",
             )
@@ -124,7 +125,8 @@ def format_post(content_draft: dict, final_text: str, image_bytes: bytes | None)
 
 def generate_output(content_draft: dict) -> dict:
     print("[storyteller] Generating image...")
-    image_bytes = generate_image(content_draft.get("image_prompt", ""))
+    avatar_description = content_draft.get("video_brief", {}).get("avatar_description", "")
+    image_bytes = generate_image(content_draft.get("image_prompt", ""), avatar_description=avatar_description)
 
     print("[storyteller] Generating interleaved output...")
     final_text = generate_interleaved_output(content_draft, image_bytes)

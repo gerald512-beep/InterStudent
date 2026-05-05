@@ -1,129 +1,204 @@
-# NYC International Student AI Influencer
+# International Student AI Influencer
 
-AI-powered multi-agent pipeline that surfaces civic inequities and resources for international students in NYC — built for the NYC Build With AI Hackathon.
+An AI-powered multi-agent pipeline that transforms fragmented civic and financial information into platform-ready social media content for international students in the United States. Built for the NYC Build With AI Hackathon 2026.
+
+**GitHub:** https://github.com/gerald512-beep/InterStudent
+
+## Team
+
+Joaquin Sardon · Kulbir Kaur · Melissa Lee · Shivani Kabra · Gerald Velasquez
+
+Course: Gen AI & Social Media
+
+---
 
 ## What it does
 
-1. Retrieves NYC Open Data, RSS, and grounded web sources relevant to international students.
-2. Detects trends and generates platform-specific LinkedIn/Instagram posts with CTAs.
-3. Produces images (Imagen) and optional multi-scene video (Veo, TTS, assembly).
-4. **Audience Personalization** — persona, segment, tone, CTA style, and related fields feed Agent 2, the Creative Storyteller, and the video brief.
-5. **Auto-publishing (local)** — JSON-backed draft/queue, stub LinkedIn/Instagram adapters, optional webhook notifications (no full Instagram consumer automation).
+A five-agent pipeline produces a complete social media content package from a single topic selection:
+
+1. **Agent 1 — Source Retrieval** — Queries Google Search Grounding, NYC Open Data (job postings, CUNY enrollment, living wage), eight financial RSS feeds, and a curated F-1/J-1 tax knowledge seed. Chunks, embeds, and ranks results by relevance.
+2. **Agent 2 — Content Generator** — Detects the trending angle, drafts platform-specific post text, hashtags, CTAs, and a five-scene video storyboard with SSML voice script.
+3. **Creative Storyteller** — Generates a social image via Imagen (4.0-ultra → 4.0 → 3.0 fallback chain) and produces a final multimodal post body via Gemini.
+4. **Agent 3 — Video Generator** — Generates per-scene clips with Veo 3.1 Fast (parallel, 3 workers), replaces audio with Chirp3-HD TTS, and assembles a 9:16 MP4 with subtitle overlays using MoviePy.
+5. **Agent 4 — Quality Control** — Scores output across seven criteria (accuracy, tone, engagement, compliance, platform fit, video script, video visuals). Scores ≥ 7 → Publish; below 7 → Modify with structured feedback.
+
+**Agent 5 — Scenario Resolver** (optional standalone) — Deterministic financial guidance for specific F-1/J-1 tax and visa scenarios, kept out of the probabilistic generation path.
+
+---
 
 ## Prerequisites
 
-- **Python 3.11+** (3.12+ recommended; 3.14 works with current pins where wheels exist).
-- **Google Cloud** project with Vertex AI enabled for Gemini, Imagen, Veo, and Text-to-Speech, plus Application Default Credentials or service account as required by your environment.
-- **API keys / tokens** as listed under Environment variables.
+- Python 3.11+ (3.12+ recommended)
+- Node.js 18+ and npm
+- Google Cloud project with Vertex AI enabled (Gemini, Imagen, Veo, Text-to-Speech)
+- Application Default Credentials: `gcloud auth application-default login`
 
-## Install dependencies
+---
 
-From the repository root:
+## Setup
+
+### Backend
 
 ```bash
 python -m venv .venv
-```
 
-Activate the virtual environment:
+# Windows
+.venv\Scripts\Activate.ps1
 
-- **Windows (PowerShell):** `.venv\Scripts\Activate.ps1`
-- **macOS / Linux:** `source .venv/bin/activate`
+# macOS / Linux
+source .venv/bin/activate
 
-Then install packages:
-
-```bash
 pip install --upgrade pip
 pip install -r requirements.txt
+
+cp .env.example .env   # fill in values (see table below)
 ```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # set VITE_API_BASE=http://localhost:8000
+```
+
+---
 
 ## Environment variables
 
-Copy the example file and fill in real values:
+| Variable | Purpose | Required |
+|---|---|---|
+| `GOOGLE_API_KEY` | Gemini and embedding API access | Yes |
+| `GOOGLE_CLOUD_PROJECT` | Vertex AI project ID (default: `interstudent-nyc-2026`) | Yes |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI region (default: `us-central1`) | Yes |
+| `NYC_OPEN_DATA_APP_TOKEN` | Socrata API token — raises rate limits | No |
+| `CORS_ALLOW_ORIGINS` | Override default CORS whitelist | No |
 
-```bash
-cp .env.example .env
-```
+Frontend (`frontend/.env`):
 
-| Variable | Purpose |
-|----------|---------|
-| `GOOGLE_API_KEY` | Google AI (Gemini) API key for embeddings and clients that use the API key path (see `agents/agent1_source_retrieval.py`). |
-| `NYC_OPEN_DATA_APP_TOKEN` | NYC Open Data (Socrata) API app token for higher rate limits. |
-| `GOOGLE_CLOUD_PROJECT` | GCP project ID for Vertex AI. |
-| `GOOGLE_CLOUD_LOCATION` | Region (e.g. `us-central1`). |
+| Variable | Purpose | Required |
+|---|---|---|
+| `VITE_API_BASE` | Backend URL (default: `http://localhost:8000`) | Yes |
 
-Ensure Application Default Credentials are available if you use Vertex AI (`gcloud auth application-default login` for local dev, or workload identity in production).
+---
 
 ## How to run
 
-**Agent 1-only pipeline (CLI):**
+**Backend** (from repo root):
 
 ```bash
-python main.py
+python -m uvicorn backend.server:app --reload --port 8000
 ```
 
-**Full Streamlit UI** (Agents 1–4, storyboard editor, personalization, publishing):
+**Frontend** (from `frontend/`):
 
 ```bash
-streamlit run app.py
+npm run dev
 ```
 
-Generated videos are written under `videos/` when present. The publish queue persists to `data/publish_queue.json` (created on first save). Override the queue directory with:
+Open http://localhost:5173 in your browser.
 
-```bash
-set INTERSTUDENT_QUEUE_DIR=C:\path\to\queue\dir
-```
+Generated videos are saved under `videos/` (gitignored). The publish queue persists to `data/publish_queue.json` (gitignored).
 
-(Use `export` on Unix.)
+---
 
-## Optional: webhook on publish
+## API endpoints
 
-In the Streamlit sidebar, set **Webhook URL** and enable **Notify webhook on manual / due publish**. The app POSTs JSON: `{"event": "publish_attempt", "payload": {...}}` to your endpoint.
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/health` | GET | Health check |
+| `/topics` | GET | Seven predefined civic topic strings |
+| `/avatar` | GET | Load canonical avatar |
+| `/avatar/generate-image` | POST | Generate avatar image via Imagen |
+| `/avatar/save` | POST | Persist canonical avatar to disk |
+| `/generate/post` | POST | Full post pipeline (Agents 1, 2, Creative Storyteller) |
+| `/generate/video_async` | POST | Launch background video job (Agents 3, 4) |
+| `/jobs/{job_id}` | GET | Poll video job status |
+
+---
 
 ## Tech stack
 
 | Area | Technology |
-|------|------------|
-| UI | Streamlit, pandas (queue table) |
-| Retrieval & embeddings | Gemini, NYC Open Data, RSS, Google Search Grounding |
-| Content & video | Gemini 2.5 Flash, Imagen 4, Veo, Chirp3-HD (TTS), MoviePy |
-| Publishing | Local JSON queue, stub adapters, `requests` for webhooks |
-| Language | Python 3.11+ |
+|---|---|
+| Frontend | React 19, TypeScript 6.0, Vite 8.0 |
+| Backend | FastAPI, Uvicorn, Python 3.11+ |
+| Retrieval | Gemini 2.5 Flash (Search Grounding), `gemini-embedding-001`, NYC Open Data (Socrata), RSS feeds |
+| Content & image | Gemini 2.5 Flash, Imagen 4 Ultra |
+| Video & audio | Veo 3.1 Fast, Chirp3-HD TTS, MoviePy |
+| Publishing | JSON queue, stub LinkedIn/Instagram adapters, webhook notifications |
+
+---
 
 ## Project layout
 
 ```
 ├── agents/
-│   ├── agent1_source_retrieval.py
-│   ├── agent2_content_generator.py
-│   ├── agent3_video_generator.py
-│   └── agent4_qc.py
-├── publishing/           # Local queue, stub publishers, webhook helper
+│   ├── agent1_source_retrieval.py     # Retrieval + embedding + ranking
+│   ├── agent2_content_generator.py    # Post drafting + storyboard
+│   ├── agent3_video_generator.py      # Veo + TTS + MoviePy assembly
+│   ├── agent4_qc.py                   # Quality control scoring
+│   ├── agent5_scenario_resolver.py    # Deterministic F-1/J-1 guidance
+│   └── scenario_rules.py
+├── backend/
+│   └── server.py                      # FastAPI REST server
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx                    # Main React component
+│   │   └── main.tsx
+│   └── package.json
 ├── output/
-│   └── creative_storyteller.py
+│   └── creative_storyteller.py        # Image gen + multimodal polish
+├── publishing/
+│   ├── service.py                     # Queue management
+│   ├── adapters.py                    # Stub LinkedIn/Instagram publishers
+│   ├── webhook.py                     # Webhook notification helper
+│   └── storage.py
 ├── config/
-│   └── persona.py
-├── audience_personalization.py
-├── app.py                  # Streamlit app
-├── main.py                 # CLI: Agent 1 retrieval only
+│   └── persona.py                     # Audience persona configuration
+├── docs/
+│   └── project_report_v2.tex          # Full project report (LaTeX)
+├── avatars/                           # canonical.json (saved avatar)
+├── videos/                            # Exported MP4s (gitignored)
+├── data/                              # publish_queue.json (gitignored)
+├── app_streamlit_legacy.py            # Legacy Streamlit UI (inactive)
+├── main.py                            # CLI: Agent 1 only
 ├── requirements.txt
-├── .env.example
-├── data/                   # publish_queue.json (gitignored when present)
-├── docs/                   # Additional design/requirements notes
-└── videos/                 # Exported videos (gitignored)
+└── .env.example
 ```
 
-## Development notes
+---
 
-- Run `pip install -r requirements.txt` after pulling changes.
-- `data/publish_queue.json` is listed in `.gitignore`; each environment creates its own queue file.
+## Approximate cost per full run
 
-## Hackathon checklist
+| Component | Cost |
+|---|---|
+| Gemini 2.5 Flash (Agents 1, 2, 4, CS) | $0.01–$0.05 |
+| Imagen 4 Ultra | $0.04 |
+| Veo 3.1 Fast (5 scenes, ~40s) | $0.50–$0.75 |
+| Chirp3-HD TTS | $0.01–$0.02 |
+| NYC Open Data | Free |
+| **Total (approx.)** | **$0.60–$0.90** |
 
-- [ ] Git repository is public
-- [ ] README lists all team members
-- [ ] Deployed to Google Cloud Run (optional)
-- [ ] Uses Google GenAI / Vertex AI
-- [ ] Demo video or live demo ready
-- [ ] NYC Open Data referenced and used
+---
 
-More architecture and task notes live under `docs/`.
+## Known limitations
+
+- LinkedIn and Instagram publishing adapters are stubs — no live platform publishing yet.
+- Single audience persona (`config/persona.py`) — does not yet cover the full diversity of international student backgrounds and visa types.
+- In-memory vector store — documents are re-embedded on every run; no persistent vector database.
+- Pipeline output varies between runs due to the stochastic nature of Veo and Gemini — consistency at scale is the primary engineering challenge before production deployment.
+- No explicit content filters for immigration or housing advice beyond Agent 4's compliance criterion.
+
+---
+
+## Roadmap
+
+- [ ] Human approval gate before publishing
+- [ ] Structured user testing with real international students
+- [ ] Persistent vector store for cross-session retrieval quality
+- [ ] Explicit content filters for sensitive topics (housing, immigration, safety)
+- [ ] Live LinkedIn and Instagram publishing adapters
+- [ ] Citation display in video storyboard and published captions
+- [ ] Platform expansion: TikTok, WhatsApp, newsletters
+- [ ] Multi-persona support beyond single `PERSONA_CONFIG`

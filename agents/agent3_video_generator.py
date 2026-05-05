@@ -102,28 +102,58 @@ def _poll_veo_operation(operation, label: str = "") -> bytes | None:
     return None
 
 
-def generate_veo_scene_clip(visual_prompt: str, voiceover: str, duration_seconds: int = 8) -> bytes | None:
+def generate_veo_scene_clip(
+    visual_prompt: str,
+    voiceover: str,
+    duration_seconds: int = 8,
+    reference_image_bytes: bytes | None = None,
+) -> bytes | None:
     """
     Generate a Veo 3.1 clip where the avatar speaks the given voiceover.
     Including the dialogue in the prompt causes Veo to naturally move the
     avatar's lips and body language to match those words.
     """
+    def _make_config(with_ref: bool) -> _gtypes.GenerateVideosConfig:
+        ref = None
+        if with_ref and reference_image_bytes:
+            try:
+                from google.genai.types import VideoGenerationReferenceImage, Image as _GImage
+                mime = "image/jpeg" if reference_image_bytes[:2] == b"\xff\xd8" else "image/png"
+                ref = [VideoGenerationReferenceImage(
+                    image=_GImage(image_bytes=reference_image_bytes, mime_type=mime),
+                    reference_type="ASSET",
+                )]
+            except Exception as ref_exc:
+                print(f"[agent3] reference_image build failed: {ref_exc}")
+                ref = None
+        return _gtypes.GenerateVideosConfig(
+            aspect_ratio="9:16",
+            duration_seconds=min(duration_seconds, 8),
+            number_of_videos=1,
+            reference_images=ref,
+        )
+
     try:
-        # Embed the dialogue so Veo lip-syncs the avatar to these exact words
         full_prompt = (
             f"{visual_prompt}. "
             f"The person speaks directly to camera and says: \"{voiceover}\""
         )
 
-        operation = _vertex_client.models.generate_videos(
-            model="veo-3.1-fast-generate-001",
-            prompt=full_prompt,
-            config=_gtypes.GenerateVideosConfig(
-                aspect_ratio="9:16",
-                duration_seconds=min(duration_seconds, 8),  # Veo max 8s
-                number_of_videos=1,
-            ),
-        )
+        try:
+            operation = _vertex_client.models.generate_videos(
+                model="veo-3.1-fast-generate-001",
+                prompt=full_prompt,
+                config=_make_config(with_ref=True),
+            )
+        except Exception as ref_api_exc:
+            # reference_images may not be supported on this model/tier — retry without
+            print(f"[agent3] Veo with reference_images failed ({ref_api_exc}), retrying without...")
+            operation = _vertex_client.models.generate_videos(
+                model="veo-3.1-fast-generate-001",
+                prompt=full_prompt,
+                config=_make_config(with_ref=False),
+            )
+
         return _poll_veo_operation(operation, label=f"Veo scene ({voiceover[:30]}...)")
 
     except Exception as exc:
@@ -134,6 +164,7 @@ def generate_veo_scene_clip(visual_prompt: str, voiceover: str, duration_seconds
 def generate_all_veo_clips(
     storyboard: list[dict],
     progress_callback: Callable[[int, str], None] | None = None,
+    reference_image_bytes: bytes | None = None,
 ) -> list[bytes | None]:
     """
     Generate Veo clips for all scenes in parallel (up to 3 at a time).
@@ -144,9 +175,10 @@ def generate_all_veo_clips(
 
     def _gen(idx: int, scene: dict):
         return idx, generate_veo_scene_clip(
-            visual_prompt    = scene.get("visual_prompt", ""),
-            voiceover        = scene.get("voiceover", ""),
-            duration_seconds = int(scene.get("duration_seconds", 8)),
+            visual_prompt         = scene.get("visual_prompt", ""),
+            voiceover             = scene.get("voiceover", ""),
+            duration_seconds      = int(scene.get("duration_seconds", 8)),
+            reference_image_bytes = reference_image_bytes,
         )
 
     print(f"[agent3] Launching {n} Veo scene clips in parallel (max 3 workers)...")
@@ -408,11 +440,18 @@ def run_agent3(
     avatar_description = video_brief.get("avatar_description", "")
     n_scenes         = max(len(storyboard), 1)
 
+    # Extract canonical avatar reference image bytes if provided
+    avatar_ref_bytes = content_draft.get("avatar_reference_image_bytes")
+
     # 1. Veo clips first (parallel) — progress ~20–60% via callback inside generate_all_veo_clips
     if progress_callback:
         progress_callback(20, "🎬 Generating video scenes... ⏳")
     print("[agent3] Generating per-scene Veo clips (parallel)...")
-    scene_clip_bytes = generate_all_veo_clips(storyboard, progress_callback=progress_callback)
+    scene_clip_bytes = generate_all_veo_clips(
+        storyboard,
+        progress_callback=progress_callback,
+        reference_image_bytes=avatar_ref_bytes,
+    )
 
     # 2. Chirp3-HD voice (full script, SSML) — after scenes so progress matches UX narrative
     if progress_callback:

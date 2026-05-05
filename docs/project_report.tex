@@ -1,0 +1,215 @@
+\documentclass[12pt, letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{booktabs}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=black
+}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+
+\title{\textbf{International Student AI Influencer}\\[0.4em]
+\large Project Report --- Gen AI \& Social Media}
+\author{
+  Joaquin Sardon \and
+  Kulbir Kaur \and
+  Melissa Lee \and
+  Shivani Kabra \and
+  Gerald Velasquez
+}
+\date{May 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Executive Summary}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The International Student AI Influencer is an AI-powered multi-agent pipeline that
+transforms scattered civic and financial information into platform-ready social media
+content for international students. Built for the NYC Build With AI Hackathon 2026,
+the system addresses the fragmented information landscape facing international students
+navigating housing, taxes, banking, immigration, and city services. The pipeline
+automates the full content lifecycle---from source retrieval to post generation, image
+creation, video production, and quality control---while surfacing important risks around
+trust, accuracy, and sensitive topic handling. Although prototyped for New York City
+using NYC Open Data, the architecture is designed as a reusable pipeline adaptable to
+other cities or university contexts by swapping data connectors.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Problem \& Motivation}
+% ─────────────────────────────────────────────────────────────────────────────
+
+International students arriving in the United States face a fragmented and often
+overwhelming information landscape. Civic resources covering housing, employment, taxes,
+immigration, banking, safety, and city services are dispersed across government portals,
+institutional websites, and informal peer networks. The slide deck identifies this
+fragmentation as the core problem: no single, trustworthy, student-facing channel
+consolidates this information in an accessible, platform-native format.
+
+The repository reinforces this motivation technically. Agent 1 aggregates from
+heterogeneous sources including live Google Search results (with citations), three NYC
+Open Data datasets (job postings, CUNY enrollment figures, and living wage benchmarks),
+eight financial RSS feeds spanning the IRS, CFPB, NASFAA, NYT Business, SoFi, Prodigy,
+Earnest, and MPOWER, and a curated set of seven F-1/J-1 visa tax scenarios. This breadth
+of data sources directly mirrors the breadth of the problem: students require one
+coherent, trustworthy voice across many interconnected domains.
+
+The slide deck and repository are in strong agreement here. The slide deck frames the
+problem from a student experience perspective; the repository demonstrates that the
+technical data model was designed to match that scope from the ground up.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Technical Architecture}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The system is built on a five-agent sequential pipeline with an optional sixth agent
+for financial scenario resolution. The interface layer is a React 19 + Vite +
+TypeScript single-page application backed by a FastAPI REST server. All generative
+models are provided by Google Vertex AI.
+
+\textbf{Agent Pipeline:}
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Agent 1 --- Source Retrieval:} Queries Google Search Grounding, NYC
+    Open Data, financial RSS feeds, and a static tax knowledge seed. Documents are
+    chunked (400 characters, 50-character overlap), embedded with
+    \texttt{gemini-embedding-001}, and ranked via in-memory cosine similarity with
+    topic weight boosting.
+  \item \textbf{Agent 2 --- Content Generator:} Detects trending angles, generates
+    post text, hashtags, and calls-to-action, and produces a five-scene video storyboard
+    with an SSML voice script using Gemini 2.5 Flash.
+  \item \textbf{Creative Storyteller (Output Layer):} Generates social media images
+    via an Imagen fallback chain (4.0-ultra $\to$ 4.0 $\to$ 3.0), then passes the
+    image and draft text through a Gemini 2.5 Flash multimodal polish pass.
+  \item \textbf{Agent 3 --- Video Generator:} Produces per-scene video clips using
+    Veo 3.1 Fast, with Chirp3-HD Text-to-Speech voiceover embedded for lip sync.
+    Five scenes are generated in parallel via a \texttt{ThreadPoolExecutor} (three
+    workers) and assembled into a 9:16 portrait MP4 using MoviePy. Chirp3-HD audio
+    replaces Veo's native track to support SSML-controlled pacing.
+  \item \textbf{Agent 4 --- Quality Control:} Scores output across seven criteria
+    (accuracy, tone, engagement, compliance, platform fit, video script, and video
+    visuals) using Gemini 2.5 Flash. Content scoring below 7 is flagged for revision;
+    at or above 7 it is cleared for publication.
+  \item \textbf{Agent 5 --- Scenario Resolver (Optional):} Provides deterministic
+    financial guidance for specific F-1/J-1 student scenarios, operating independently
+    from the main content pipeline.
+\end{itemize}
+
+The FastAPI backend exposes nine REST endpoints, including an asynchronous video job
+system with browser-side polling via job ID. The React frontend stores pipeline state
+in \texttt{localStorage} for non-volatile phase recovery across page reloads.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Features \& Functionality}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Both sources agree on the core content generation capability. The slide deck emphasizes
+the user-facing narrative; the repository confirms the full technical implementation.
+Concrete capabilities include:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Topic selection across seven predefined civic and financial categories
+  \item Platform toggle between LinkedIn and Instagram with persona-specific tone
+    adaptation
+  \item Live source retrieval with Google Search Grounding, returning cited results
+  \item AI-generated post text, hashtags, and call-to-action copy
+  \item Avatar editor: a customizable AI persona image generated via Imagen and
+    persisted to the backend as a canonical avatar injected into content prompts
+  \item Storyboard editor: reviewable and editable five-scene video brief before
+    video generation is triggered
+  \item Asynchronous video generation with browser-side polling and MP4 download
+  \item Publishing queue with draft, scheduled, and published states, and optional
+    webhook notifications on publish events
+  \item Audience personalization sidebar with segment, tone, and platform style
+    fields, persisted in \texttt{localStorage}
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Known Limitations \& Risks}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The slide deck explicitly identifies four risk categories, all of which find
+technical correlates in the repository.
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Information accuracy:} Generated posts may contain wrong or outdated
+    information. Agent 1 pulls live data but does not validate it against authoritative
+    ground truth; Agent 4 scores accuracy using a language model judgment, which is
+    itself fallible.
+  \item \textbf{Overgeneralization:} The system uses a single persona configuration
+    (\texttt{config/persona.py}) that may not capture the diversity of international
+    student backgrounds, visa types, or countries of origin.
+  \item \textbf{Sensitive topic handling:} Content on housing, immigration, and safety
+    carries implicit advice risk. Explicit content filters beyond Agent 4's compliance
+    criterion are not yet implemented.
+  \item \textbf{Generic content:} Polished formatting does not guarantee relevance.
+    The in-memory vector store does not persist or learn from user feedback between
+    sessions.
+  \item \textbf{Publishing stubs:} LinkedIn and Instagram adapters are currently
+    placeholder implementations; no live publishing is active.
+    \emph{[NOT IN SOURCES: production publishing integration timeline]}
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Roadmap \& Next Steps}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The slide deck defines a Trust-Ready MVP roadmap. The repository suggests additional
+near-term technical work that complements it.
+
+\textbf{From the slide deck:}
+\begin{itemize}[leftmargin=1.5em]
+  \item Embed source citations visibly in every published post draft (Agent 1 already
+    returns cited sources; UI-level surfacing is
+    \emph{[NOT IN SOURCES: current implementation status]})
+  \item Human approval gate before any content is published
+  \item User testing with real international students
+  \item Improved content filters for sensitive topics (housing, immigration, safety)
+  \item Platform expansion to TikTok, WhatsApp, and newsletters
+\end{itemize}
+
+\textbf{Additional work implied by the repository:}
+\begin{itemize}[leftmargin=1.5em]
+  \item Activate live LinkedIn and Instagram publishing adapters
+  \item Implement persistent vector storage for cross-session retrieval quality
+  \item Expand beyond the single \texttt{PERSONA\_CONFIG} to support multiple student
+    segments and visa categories
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Team}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Joaquin Sardon
+  \item Kulbir Kaur
+  \item Melissa Lee
+  \item Shivani Kabra
+  \item Gerald Velasquez
+\end{itemize}
+
+\emph{[NOT IN SOURCES: individual role assignments or GitHub contributor breakdown]}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The International Student AI Influencer demonstrates a credible end-to-end AI content
+pipeline that addresses a genuine information access gap. The system's architecture---
+five specialized agents, multi-modal output across text, image, and video, and a modern
+React and FastAPI interface---is technically ambitious for a hackathon context and
+establishes a solid foundation for a trust-ready production tool. The team has correctly
+identified the central challenges of accuracy, generalization, and sensitive content
+handling, and the roadmap reflects a thoughtful path toward a responsible, student-tested
+deployment.
+
+\end{document}

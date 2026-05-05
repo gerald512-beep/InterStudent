@@ -1,7 +1,10 @@
 import base64
+import json
 import os
+import re
 import threading
 import uuid
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -37,9 +40,58 @@ def _b64(data: bytes | None) -> str | None:
     return base64.b64encode(data).decode("ascii")
 
 
+_GROUNDING_URL_RE = re.compile(
+    r'\[([^\]]+)\]\(https?://vertexaisearch\.cloud\.google\.com/grounding-api-redirect/[^\)]+\)'
+)
+_BARE_GROUNDING_RE = re.compile(
+    r'https?://vertexaisearch\.cloud\.google\.com/grounding-api-redirect/\S+'
+)
+
+
+def _clean_post_text(text: str) -> str:
+    """Remove Google Search Grounding redirect URLs from post body."""
+    text = _GROUNDING_URL_RE.sub(r'\1', text)   # [label](redirect url) → label
+    text = _BARE_GROUNDING_RE.sub('', text)      # bare redirect url → removed
+    return text.strip()
+
+
+def _sanitize(obj: Any) -> Any:
+    """Recursively convert bytes/numpy arrays to JSON-safe types."""
+    if isinstance(obj, bytes):
+        return _b64(obj)
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    try:
+        import numpy as np  # type: ignore
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.integer, np.floating)):
+            return obj.item()
+    except ImportError:
+        pass
+    return obj
+
+
+_AVATARS_DIR = Path(__file__).parent.parent / "avatars"
+_CANONICAL_AVATAR_PATH = _AVATARS_DIR / "canonical.json"
+
+
+class AvatarGenerateRequest(BaseModel):
+    description: str
+
+
+class AvatarSaveRequest(BaseModel):
+    description: str
+    image_base64: str
+    mime_type: str = "image/png"
+
+
 class GeneratePostRequest(BaseModel):
     topic: str = Field(..., min_length=3)
     platform: Literal["linkedin", "instagram"] = "linkedin"
+    canonical_avatar: dict | None = None  # { description, image_base64, mime_type }
 
 
 class GeneratePostResponse(BaseModel):
@@ -56,6 +108,11 @@ class GenerateVideoRequest(BaseModel):
 class GenerateVideoResponse(BaseModel):
     video_output: dict[str, Any]
     qc_result: dict[str, Any] | None = None
+
+
+class GenerateImageRequest(BaseModel):
+    image_prompt: str
+    avatar_description: str = ""
 
 
 class JobStatusResponse(BaseModel):
@@ -111,6 +168,75 @@ def list_topics() -> dict[str, Any]:
     return {"topics": TOPICS}
 
 
+@app.get("/avatar")
+def get_avatar() -> dict[str, Any]:
+    if _CANONICAL_AVATAR_PATH.exists():
+        try:
+            data = json.loads(_CANONICAL_AVATAR_PATH.read_text(encoding="utf-8"))
+            return data
+        except Exception:
+            pass
+    return {"description": "", "image_base64": "", "mime_type": "image/png"}
+
+
+@app.post("/avatar/generate-image")
+def avatar_generate_image(req: AvatarGenerateRequest) -> dict[str, Any]:
+    try:
+        from vertexai.preview.vision_models import ImageGenerationModel
+        import vertexai
+        _p = os.environ.get("GOOGLE_CLOUD_PROJECT", "interstudent-nyc-2026")
+        _l = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        vertexai.init(project=_p, location=_l)
+        image_bytes = None
+        for model_id in ["imagen-4.0-ultra-generate-001", "imagen-4.0-generate-001", "imagen-3.0-generate-001"]:
+            try:
+                model = ImageGenerationModel.from_pretrained(model_id)
+                images = model.generate_images(
+                    prompt=req.description,
+                    number_of_images=1,
+                    aspect_ratio="9:16",
+                )
+                if images:
+                    image_bytes = images[0]._image_bytes
+                    break
+            except Exception:
+                continue
+        if not image_bytes:
+            raise HTTPException(status_code=500, detail="Imagen returned no image (content filter or quota)")
+        mime = "image/jpeg" if image_bytes[:2] == b"\xff\xd8" else "image/png"
+        return {"image_base64": _b64(image_bytes), "mime_type": mime}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/avatar/save")
+def avatar_save(req: AvatarSaveRequest) -> dict[str, Any]:
+    try:
+        _AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {"description": req.description, "image_base64": req.image_base64, "mime_type": req.mime_type}
+        _CANONICAL_AVATAR_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/generate/image")
+def generate_image_only(req: GenerateImageRequest) -> dict[str, Any]:
+    try:
+        from output.creative_storyteller import generate_image
+        image_bytes = generate_image(req.image_prompt, avatar_description=req.avatar_description)
+        if not image_bytes:
+            raise HTTPException(status_code=500, detail="Imagen returned no image")
+        mime = "image/jpeg" if image_bytes[:2] == b"\xff\xd8" else "image/png"
+        return {"image_b64": _b64(image_bytes), "mime_type": mime}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/generate/post", response_model=GeneratePostResponse)
 def generate_post(req: GeneratePostRequest) -> GeneratePostResponse:
     try:
@@ -121,6 +247,27 @@ def generate_post(req: GeneratePostRequest) -> GeneratePostResponse:
         retrieval_pack = retrieve(req.topic)
         content_draft = run_agent2(retrieval_pack, forced_platform=req.platform)
         content_draft["platform"] = req.platform
+
+        # Inject canonical avatar into content_draft if provided
+        if req.canonical_avatar and req.canonical_avatar.get("description"):
+            avatar_desc = req.canonical_avatar["description"]
+            video_brief = content_draft.setdefault("video_brief", {})
+            video_brief["avatar_description"] = avatar_desc
+            # Prepend avatar description to each scene's visual_prompt
+            for scene in video_brief.get("storyboard", []):
+                vp = scene.get("visual_prompt", "")
+                if avatar_desc[:40].lower() not in vp.lower():
+                    scene["visual_prompt"] = f"{avatar_desc[:300]}, {vp}"
+            # Prepend to post image_prompt for Imagen
+            existing_img_prompt = content_draft.get("image_prompt", "")
+            content_draft["image_prompt"] = f"{avatar_desc[:300]}. {existing_img_prompt}"
+            # Store decoded bytes for Veo reference_images
+            try:
+                content_draft["avatar_reference_image_bytes"] = base64.b64decode(
+                    req.canonical_avatar["image_base64"]
+                )
+            except Exception:
+                pass
 
         # Provide a fast baseline response first. Full image generation (Imagen)
         # can take a long time or hang in some local environments.
@@ -155,15 +302,22 @@ def generate_post(req: GeneratePostRequest) -> GeneratePostResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    # Strip grounding redirect URLs from post text
+    for field in ("body", "caption"):
+        if final_output.get(field):
+            final_output[field] = _clean_post_text(final_output[field])
+
     # Convert bytes to base64 for JSON transport
     if final_output.get("image_bytes"):
-        final_output["image_b64"] = _b64(final_output.get("image_bytes"))
+        raw = final_output["image_bytes"]
+        final_output["image_b64"] = _b64(raw)
+        final_output["image_mime"] = "image/jpeg" if raw[:2] == b"\xff\xd8" else "image/png"
         final_output.pop("image_bytes", None)
 
     return GeneratePostResponse(
-        retrieval_pack=retrieval_pack,
-        content_draft=content_draft,
-        final_output=final_output,
+        retrieval_pack=_sanitize(retrieval_pack),
+        content_draft=_sanitize(content_draft),
+        final_output=_sanitize(final_output),
     )
 
 
@@ -190,9 +344,10 @@ def generate_video_async(req: GenerateVideoRequest) -> dict[str, str]:
             if video_output.get("thumbnail_bytes"):
                 video_output["thumbnail_b64"] = _b64(video_output.get("thumbnail_bytes"))
                 video_output.pop("thumbnail_bytes", None)
+            video_output.pop("audio_bytes", None)  # frontend doesn't need raw MP3
 
             qc = run_agent4(req.final_output, video_output or {})
-            _set_job(job_id, status="done", result={"video_output": video_output, "qc_result": qc})
+            _set_job(job_id, status="done", result=_sanitize({"video_output": video_output, "qc_result": qc}))
         except Exception as exc:
             _set_job(job_id, status="error", error=str(exc))
 

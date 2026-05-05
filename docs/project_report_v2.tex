@@ -1,0 +1,802 @@
+\documentclass[12pt, letterpaper]{article}
+
+% ── Packages ────────────────────────────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+\usepackage{setspace}
+\usepackage{microtype}
+\usepackage{caption}
+\usepackage{mdframed}
+\usepackage{listings}
+\usepackage{fontenc}
+\usepackage{inputenc}
+
+% ── Typography ───────────────────────────────────────────────────────────────
+\singlespacing
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{8pt}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\vspace{-4pt}\rule{\linewidth}{0.6pt}\vspace{2pt}]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{}{0em}{}
+
+% ── Header / Footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small International Student AI Influencer}
+\lhead{\small Gen AI \& Social Media}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Listings style ───────────────────────────────────────────────────────────
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!10}
+}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ── Title Page ───────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\LARGE\bfseries International Student AI Influencer\par}
+  \vspace{0.5cm}
+  {\large An AI-Powered Multi-Agent Pipeline for Civic Content Generation\par}
+  \vspace{2cm}
+  {\large\itshape Gen AI \& Social Media\par}
+  \vspace{1.5cm}
+
+  \begin{tabular}{c}
+    \large Joaquin Sardon \\[4pt]
+    \large Kulbir Kaur \\[4pt]
+    \large Melissa Lee \\[4pt]
+    \large Shivani Kabra \\[4pt]
+    \large Gerald Velasquez \\
+  \end{tabular}
+
+  \vspace{2cm}
+  {\large May 2026\par}
+  \vfill
+  {\small NYC Build With AI Hackathon 2026}
+\end{titlepage}
+
+\newpage
+\thispagestyle{empty}
+\mbox{}
+\newpage
+
+% ── Executive Summary ────────────────────────────────────────────────────────
+\section*{Executive Summary}
+\addcontentsline{toc}{section}{Executive Summary}
+
+The International Student AI Influencer is a multi-agent generative AI pipeline that
+transforms fragmented civic and financial information into platform-ready social media
+content targeting international students in the United States. Built during the NYC
+Build With AI Hackathon 2026, the system addresses a concrete and underserved gap: no
+single accessible channel consolidates the housing, tax, immigration, banking, employment,
+and safety information that international students urgently need upon arrival. The
+pipeline automates the full content lifecycle---source retrieval from live web results,
+NYC Open Data, and curated RSS feeds; post drafting; AI image generation; five-scene
+video production with lip-synced voiceover; and automated quality scoring---and surfaces
+it through a React-based web interface backed by a FastAPI server. The main takeaway
+is that a compact, well-chained set of specialized AI agents can bridge the gap between
+raw civic data and polished, student-appropriate social media content at low marginal
+cost, while making explicit the trust and accuracy risks that any such system must
+eventually resolve before production deployment.
+
+\textbf{GitHub Repository:}
+\url{https://github.com/gerald512-beep/InterStudent}
+
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Problem Statement and Motivation}
+
+More than one million international students study at colleges and universities in the
+United States each year. Upon arrival---and repeatedly throughout their enrollment---they
+must navigate a dense, poorly integrated web of civic systems: opening a bank account
+without a Social Security Number, understanding F-1 visa employment restrictions,
+filing taxes as a non-resident alien, securing housing without a US credit history,
+accessing city emergency services, and interpreting rapidly changing immigration policy.
+The information that governs each of these domains lives in separate silos: IRS
+publications, university international student offices, state housing authority portals,
+local government APIs, and financial institution blogs. No unified, student-facing
+channel aggregates and translates this information into a format appropriate to where
+students actually consume media: social platforms.
+
+The consequence is predictable. Students rely on informal peer networks, outdated
+Reddit threads, or advice from friends who faced the same uncertainty a year or two
+earlier. The information they act on is frequently wrong, incomplete, or dangerously
+out of date---particularly in domains like tax law and immigration compliance where
+errors carry serious penalties.
+
+This project asks: can a generative AI pipeline reliably bridge the gap between raw
+civic data sources and student-appropriate social media content, at a quality and
+speed that a small team or student organization could sustain?
+
+\subsection{Who the Project Serves}
+
+The primary audience is international students in the United States, specifically those
+on F-1 and J-1 visas navigating financial and civic systems for the first time. The
+prototype targets New York City and draws on NYC-specific datasets, but the pipeline
+architecture is designed to be portable: swapping the data connectors in Agent 1 would
+allow the same pipeline to serve international student communities at any US university
+or in any city with comparable open data infrastructure.
+
+A secondary audience is the student organizations, international student offices, and
+nonprofit groups that could operate the tool as a content channel---producing a regular
+cadence of accurate, timely, platform-native posts without requiring a dedicated
+communications team.
+
+\subsection{Generative AI Angle}
+
+The project uses generative AI not as a chatbot or search interface, but as a
+coordinated production pipeline. Four specialized agents plus an output-rendering
+layer each apply a different model or modality at the appropriate stage of content
+creation:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Semantic retrieval} uses text embeddings (Google's
+    \texttt{gemini-embedding-001}) to rank heterogeneous documents by relevance to
+    a given civic topic, with topic-specific weight boosting.
+  \item \textbf{Content drafting} uses a large language model (Gemini 2.5 Flash) to
+    detect the trending angle in retrieved data and generate post text, hashtags,
+    and a five-scene video storyboard with an SSML voice script.
+  \item \textbf{Image generation} uses Imagen 4 Ultra (with a fallback chain to
+    Imagen 4 and Imagen 3) to produce a photorealistic social image aligned to the
+    post and the avatar persona.
+  \item \textbf{Video production} uses Veo 3.1 Fast to generate per-scene video
+    clips with embedded voiceover, assembled by MoviePy into a 9:16 MP4 with
+    Chirp3-HD Text-to-Speech audio replacement for precise SSML-controlled pacing.
+  \item \textbf{Automated quality control} uses Gemini 2.5 Flash to score the
+    output against seven criteria before it enters the publishing queue.
+\end{itemize}
+
+Generative AI is the right fit here because the core task---reading unstructured
+civic information and producing polished, platform-appropriate media---is exactly what
+modern foundation models do well. Rule-based systems or templated content would either
+miss the nuance of changing policy or produce content too generic to be useful. The
+agentic pattern allows each model to specialize: retrieval, writing, image, video,
+and evaluation are distinct cognitive tasks that benefit from being handled separately
+and then composed.
+
+\subsection{Limitations of the Status Quo}
+
+Existing solutions fail this audience in different ways. General-purpose AI assistants
+(ChatGPT, Gemini, Claude) can answer individual questions but do not monitor live
+data sources, produce platform-formatted posts automatically, or maintain a consistent
+persona and publishing cadence. Government portals and university international student
+office websites are authoritative but static, text-heavy, and not distributed through
+the channels where students spend time. Commercial social media management tools
+(Buffer, Hootsuite, Sprout Social) provide scheduling and analytics but have no native
+ability to generate civic content from raw open data. The gap between raw information
+and student-ready media is currently filled by human effort---or not filled at all.
+
+\subsection{Ethics, Risk, and Governance}
+
+The project team explicitly identified four categories of risk during design, and this
+report treats them as first-class concerns rather than an afterthought.
+
+\textbf{Accuracy and currency.} Generated posts derive from live data sources, but
+the pipeline cannot verify that retrieved information is correct or up to date before
+publishing. An incorrect statement about tax filing deadlines or visa employment
+restrictions could cause real harm to a student who acts on it.
+
+\textbf{Overgeneralization.} The system uses a single audience persona configuration.
+International students represent more than 200 nationalities, dozens of visa categories,
+and highly varied prior experience with US institutions. A post calibrated for one
+segment may be misleading or irrelevant to another.
+
+\textbf{Implicit advice on sensitive topics.} Housing, immigration, and financial
+decisions carry legal and financial consequences. Content that presents itself as
+informational can function as advice in practice, particularly when it is polished,
+confident, and platform-native in presentation.
+
+\textbf{Content quality theater.} A post can be visually polished, grammatically
+correct, and structurally on-brand while being substantively too generic to be
+useful---or subtly wrong in ways that are not apparent to a student reading it for
+the first time.
+
+These risks motivate the roadmap described in Section 4 and are directly reflected in
+the design of Agent 4 (quality control) and the decision to implement a human approval
+gate before any content is published.
+
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Implementation}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{System Overview}
+
+The system comprises five layers that correspond to five functional concerns: data
+retrieval, content generation, image rendering, video production, and quality control.
+These layers are implemented as discrete Python modules orchestrated by a FastAPI
+backend and surfaced to users through a React single-page application. Figure 1 shows
+the high-level pipeline.
+
+\begin{mdframed}[backgroundcolor=gray!8, linewidth=0.6pt]
+\begin{center}
+\small
+\textbf{Figure 1. High-Level Agent Pipeline}\\[6pt]
+\texttt{
+\begin{tabular}{ccccccc}
+[User Input] & $\to$ & Agent 1 & $\to$ & Agent 2 & $\to$ & Creative Storyteller \\
+             &        & Retrieval &      & Content &       & Image + Final Text \\
+             &        &         &      & Generator &     & \\[6pt]
+             &        &         &      & $\downarrow$ & & $\downarrow$ \\[2pt]
+             &        &         &      & Agent 3 & $\to$ & Agent 4 \\
+             &        &         &      & Video   &       & QC + Decision \\
+             &        &         &      &         &       & $\downarrow$ \\
+             &        &         &      &         &       & Publishing Queue \\
+\end{tabular}
+}
+\end{center}
+\end{mdframed}
+
+Agent 5 (Scenario Resolver) operates as a standalone optional tool for deterministic
+financial guidance and does not participate in the main content pipeline.
+
+\subsection{Agent 1: Source Retrieval}
+
+Agent 1 is the data foundation of the pipeline. Given a civic topic query, it
+aggregates documents from four source categories:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Google Search Grounding via Gemini 2.5 Flash}: Live web results
+    with source citations. This is the highest-signal input because it reflects
+    current policy, news, and guidance rather than a static snapshot.
+  \item \textbf{NYC Open Data (Socrata API)}: Three curated datasets---NYC job
+    postings (\texttt{kpav-sd4t}), CUNY enrollment figures (\texttt{d44m-4xgv}),
+    and NYC living wage benchmarks (\texttt{ic3t-wcy2}).
+  \item \textbf{Financial RSS Feeds}: Eight feeds spanning IRS announcements, CFPB
+    consumer updates, NASFAA financial aid news, NYT Business, and four student
+    loan providers (SoFi, Prodigy Finance, Earnest, MPOWER).
+  \item \textbf{Static Tax Knowledge Seed}: Seven curated F-1/J-1 tax scenarios
+    hardcoded as a fallback for domains where live retrieval is unreliable.
+\end{itemize}
+
+Retrieved documents are chunked at 400 characters with a 50-character overlap and
+embedded using \texttt{gemini-embedding-001}. Relevance ranking uses in-memory cosine
+similarity with topic-specific weight boosting, producing a ranked \texttt{retrieval\_pack}
+passed downstream. No persistent vector database is required, keeping the architecture
+stateless for hackathon purposes.
+
+\subsection{Agent 2: Content Generator}
+
+Agent 2 receives the \texttt{retrieval\_pack} and produces all the raw material for
+a social media post. It operates in three stages:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Trend Detection}: Identifies the most timely and engaging angle
+    from the retrieved results, along with an urgency signal for CTA framing.
+  \item \textbf{Post Drafting}: Generates post text calibrated to the selected
+    platform (LinkedIn or Instagram), including hashtags, calls-to-action, and a
+    image generation prompt, using persona configuration from
+    \texttt{config/persona.py}.
+  \item \textbf{Video Brief Generation}: Produces a five-scene storyboard with per-scene
+    visual prompts, character direction, and an SSML-annotated voice script designed
+    for Chirp3-HD Text-to-Speech.
+\end{enumerate}
+
+All inference in Agent 2 runs against Gemini 2.5 Flash. The output is a
+\texttt{content\_draft} dictionary consumed by both the Creative Storyteller and
+Agent 3 in parallel.
+
+\subsection{Creative Storyteller: Image Rendering and Final Text}
+
+The Creative Storyteller module handles image generation and the final multimodal
+polish pass. It implements an Imagen fallback chain: Imagen 4.0-ultra $\to$ Imagen
+4.0 $\to$ Imagen 3.0, catching API errors at each step. Once an image is produced,
+the image bytes and draft post text are passed together to Gemini 2.5 Flash in a
+multimodal prompt, producing a final post body that is tonally and visually coherent
+with the generated image. The output is a \texttt{final\_output} dictionary containing
+the post body, base64-encoded image, platform, hashtags, and cited sources.
+
+\subsection{Agent 3: Video Generator}
+
+Agent 3 is the most computationally intensive component. Given the five-scene storyboard
+from Agent 2, it:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item Synthesizes SSML voiceover audio using Google Cloud Text-to-Speech Chirp3-HD
+    (\texttt{en-US-Chirp3-HD-Aoede} for female, \texttt{en-US-Chirp3-HD-Orus} for male).
+  \item Generates one Veo 3.1 Fast video clip per scene (9:16, 8 seconds), with the
+    voiceover embedded in the generation prompt for natural lip sync and body language.
+  \item Runs scenes in parallel using a \texttt{ThreadPoolExecutor} with three workers,
+    reducing wall time from approximately 10 minutes sequential to approximately 3 minutes.
+  \item Falls back to Imagen 4 Ultra static images with a Ken Burns zoom effect when
+    Veo generation fails for a scene.
+  \item Assembles the clips into a single MP4 using MoviePy, overlaying subtitle text
+    and replacing Veo's native audio track with the Chirp3-HD track to preserve
+    SSML-controlled pacing (\texttt{<emphasis>}, \texttt{<prosody>}, \texttt{<break>} tags).
+\end{enumerate}
+
+The final video is a 9:16 portrait MP4 at 24 FPS, suitable for Instagram Reels and
+TikTok. The base64-encoded video and a thumbnail are returned in the
+\texttt{video\_output} dictionary.
+
+\subsection{Agent 4: Quality Control}
+
+Agent 4 uses Gemini 2.5 Flash to evaluate the combined output of the Creative
+Storyteller and Agent 3 against seven criteria: accuracy, tone, engagement, compliance,
+platform fit, video script coherence, and visual-audio alignment. Each criterion is
+scored on a 1--10 scale. An aggregate score at or above 7 triggers a \texttt{PUBLISH}
+decision; below 7 the agent returns a \texttt{MODIFY} decision with structured feedback
+for each failing criterion. A JSON parse failure defaults to \texttt{PUBLISH} at score
+7 to prevent the pipeline from blocking indefinitely.
+
+\subsection{Agent 5: Scenario Resolver}
+
+Agent 5 is an optional, standalone module for deterministic financial guidance. It
+implements a two-stage extraction pattern: a language model first extracts the
+structured parameters of a user query (visa type, income type, filing status), and
+a rule engine (\texttt{scenario\_rules.py}, 142 lines) then maps those parameters to
+a deterministic guidance response. This keeps the most legally sensitive domain---tax
+and financial advice---out of the probabilistic generation path.
+
+\subsection{Backend: FastAPI Server}
+
+The FastAPI server (\texttt{backend/server.py}) wraps the agent pipeline in a REST
+interface. Key endpoints are listed below.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Endpoint} & \textbf{Method} & \textbf{Purpose} \\
+\midrule
+\texttt{/health}               & GET  & Health check \\
+\texttt{/topics}               & GET  & Return seven predefined civic topic strings \\
+\texttt{/avatar}               & GET  & Load canonical avatar from \texttt{avatars/canonical.json} \\
+\texttt{/avatar/generate-image}& POST & Generate avatar image via Imagen \\
+\texttt{/avatar/save}          & POST & Persist canonical avatar to disk \\
+\texttt{/generate/image}       & POST & Single image generation \\
+\texttt{/generate/post}        & POST & Full post pipeline (Agents 1, 2, Creative Storyteller) \\
+\texttt{/generate/video\_async}& POST & Launch background video job (Agents 3, 4); returns job ID \\
+\texttt{/jobs/\{job\_id\}}     & GET  & Poll job status (queued / running / done / error) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Video jobs run in background threads managed by a thread-safe job dictionary
+(\texttt{\_jobs}, \texttt{\_jobs\_lock}). A 35-second timeout on post rendering
+prevents the frontend from hanging. CORS is configured to allow \texttt{localhost:5173}
+and \texttt{127.0.0.1:5173} by default, overridable via the \texttt{CORS\_ALLOW\_ORIGINS}
+environment variable.
+
+\subsection{Frontend: React Application}
+
+The frontend is a React 19 + TypeScript 6.0 + Vite 8.0 single-page application.
+It is organized into two tabs: \textbf{Generate} and \textbf{Avatar}.
+
+The Generate tab exposes the full pipeline to the user. A topic selector populates
+from the \texttt{/topics} endpoint; a platform toggle switches between LinkedIn and
+Instagram; an audience personalization sidebar lets users configure segment, tone,
+and platform style (stored in \texttt{localStorage}). Phase tracking (idle $\to$
+post running $\to$ post done $\to$ video running $\to$ video done) drives the UI
+state. A storyboard editor lets users review and edit each of the five scenes before
+video generation is triggered. Once a video job is submitted, the frontend polls
+\texttt{/jobs/\{job\_id\}} every 2--3 seconds and offers an MP4 download once the
+job completes.
+
+The Avatar tab provides a text description editor for a customizable AI persona, an
+image generation preview, and a save action that persists the canonical avatar to the
+backend. The avatar description and image are injected into Agent 2 and Creative
+Storyteller prompts when present, ensuring visual consistency across posts.
+
+All pipeline state (retrieval pack, content draft, final output, video output, QC
+result) is persisted in \texttt{localStorage}, allowing non-volatile phase recovery
+across page reloads without re-running the pipeline.
+
+\subsection{Publishing Infrastructure}
+
+A lightweight publishing queue (\texttt{publishing/service.py}) supports draft,
+queued, and published states with optional scheduled publish times. A webhook
+notification helper (\texttt{publishing/webhook.py}) POSTs a
+\texttt{publish\_attempt} event payload to a configurable URL. LinkedIn and Instagram
+publishing adapters (\texttt{publishing/adapters.py}) are currently stub
+implementations; live platform API integration is planned but not yet active.
+
+\subsection{Stack and Configuration}
+
+\textbf{Backend dependencies} (selected): \texttt{google-generativeai $\geq$ 0.8.0},
+\texttt{google-cloud-aiplatform $\geq$ 1.70.0}, \texttt{google-cloud-texttospeech
+$\geq$ 2.16.0}, \texttt{moviepy $\geq$ 2.0.0}, \texttt{feedparser $\geq$ 6.0.11},
+\texttt{trafilatura $\geq$ 1.12.0}, \texttt{fastapi}, \texttt{uvicorn},
+\texttt{python-dotenv}.
+
+\textbf{Frontend dependencies}: React 19.2.5, TypeScript 6.0.2, Vite 8.0.9.
+
+\textbf{Required environment variables} (stored in \texttt{.env}, never committed):
+\texttt{GOOGLE\_API\_KEY} (Gemini and embedding API access),
+\texttt{GOOGLE\_CLOUD\_PROJECT} (default: \texttt{interstudent-nyc-2026}),
+\texttt{GOOGLE\_CLOUD\_LOCATION} (default: \texttt{us-central1}),
+\texttt{NYC\_OPEN\_DATA\_APP\_TOKEN} (optional, raises rate limits).
+
+\textbf{To run locally:}
+\begin{lstlisting}
+# Backend
+pip install -r requirements.txt
+cp .env.example .env   # fill in API keys
+python -m uvicorn backend.server:app --reload --port 8000
+
+# Frontend
+cd frontend && npm install
+cp .env.example .env   # set VITE_API_BASE=http://localhost:8000
+npm run dev
+\end{lstlisting}
+
+\textbf{Repository:} \url{https://github.com/gerald512-beep/InterStudent}
+
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Results and Analysis}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{What the Pipeline Produces}
+
+A full pipeline run on the topic ``Opening a US bank account as an international
+student'' produces:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item A 150--250-word LinkedIn or Instagram post with hashtags, a call-to-action,
+    and cited source URLs drawn from live Google Search results and financial RSS feeds.
+  \item A 1024$\times$1024 social image generated by Imagen depicting the avatar
+    persona in a context relevant to the post topic.
+  \item A five-scene 9:16 portrait video (approximately 40 seconds at 8 seconds per
+    scene), with scene-specific visuals generated by Veo 3.1 Fast, a Chirp3-HD
+    voiceover, and subtitle overlays.
+  \item A quality control report scoring the content across seven criteria, with a
+    binary Publish / Modify decision and per-criterion feedback.
+\end{itemize}
+
+Total wall time for a full run on tested hardware is approximately 4--6 minutes: roughly
+15--20 seconds for Agents 1 and 2 combined, 30--60 seconds for the Creative Storyteller
+image pass, and 3--4 minutes for parallel Veo video generation. The frontend handles
+the post and video phases asynchronously, so users see post content within one minute
+while the video processes in the background.
+
+\subsection{What Works}
+
+\textbf{Source retrieval quality.} Google Search Grounding consistently returns timely,
+cited results on financial and civic topics that are more current than anything in the
+static RSS or NYC Open Data feeds. This makes Agent 1's grounding-first design the
+correct priority ordering: the live web is the most reliable signal, with the structured
+datasets providing local context.
+
+\textbf{Agent 2 content quality.} Posts generated for well-defined topics (bank accounts,
+tax filing, student loan options) are generally readable, platform-appropriate, and
+substantively accurate at the level of broad guidance. The persona configuration
+(\texttt{config/persona.py}) successfully shapes tone across LinkedIn (professional,
+informational) and Instagram (warmer, CTA-forward) without requiring separate prompts
+per platform.
+
+\textbf{Avatar persona consistency.} The canonical avatar system works as designed.
+Injecting the avatar description into both Agent 2 and the Creative Storyteller produces
+visually consistent persona representation across posts and storyboard scenes, which
+is critical for building a recognizable channel identity.
+
+\textbf{Video pipeline robustness.} The Veo $\to$ Imagen $\to$ Ken Burns fallback chain
+handles API failures gracefully. In testing, fallback to Imagen with a Ken Burns zoom
+effect produced acceptable video quality when Veo was unavailable, and the Chirp3-HD
+audio track was indistinguishable between Veo and Imagen fallback paths because the
+audio is replaced in all cases.
+
+\textbf{Agent 4 decision quality.} The quality control agent correctly identified posts
+that were too generic or that contained hedged language inappropriate for a public-facing
+social channel, producing actionable per-criterion feedback rather than a binary pass/fail.
+
+\subsection{What Does Not Work Well}
+
+\textbf{Sensitive topic handling.} The current implementation has no explicit guardrails
+for content on immigration compliance or housing rights beyond Agent 4's compliance
+criterion. A post flagged as compliant by Agent 4 may still contain implicit guidance
+that a student could misinterpret as legal advice. This is the highest-risk gap in the
+current system.
+
+\textbf{Single persona.} The single \texttt{PERSONA\_CONFIG} is calibrated for a broadly
+``East Asian female student, 20--28 years old'' persona. This is a reasonable hackathon
+simplification but limits the system's ability to serve the full diversity of the
+international student population. Students from South Asia, Latin America, or Sub-Saharan
+Africa face meaningfully different civic information challenges, and a single persona
+configuration will not accurately represent or serve them all.
+
+\textbf{In-memory vector store.} The absence of a persistent vector database means that
+every run re-embeds all retrieved documents from scratch. For a hackathon demo this is
+acceptable; for a production system handling dozens of topics across dozens of runs per
+day, this is both slow and expensive.
+
+\textbf{Publishing stubs.} LinkedIn and Instagram adapters are placeholders. The
+publishing queue correctly manages draft and scheduled states, but no content can
+actually be published to a live platform without activating the adapter layer.
+
+\textbf{AI-sloppy behavior.} On broad or ambiguous topics (e.g., ``city safety for
+students''), Agent 2 sometimes produces content that is structurally well-formed but
+substantively vague---generic safety tips that any resident could find on any city
+website, with no student-specific framing. This is the ``content quality theater'' risk
+the slide deck identifies, and Agent 4 does not consistently catch it.
+
+\subsection{Informal Testing}
+
+The primary testing mode for this project was end-to-end pipeline execution: running the
+full Agent 1 $\to$ Agent 2 $\to$ Creative Storyteller $\to$ Agent 3 $\to$ Agent 4 sequence
+and evaluating the final video output for coherence, accuracy, and visual quality. This
+form of integration testing is appropriate given the nature of the system---the most
+meaningful unit of output is the complete content package, not any individual agent's
+intermediate result.
+
+The central challenge identified through this testing is pipeline stability and
+consistency. Each run involves six distinct generative model calls across four different
+model families (Gemini, Imagen, Veo, Chirp3-HD), each of which introduces variance.
+A post that passes Agent 4's quality threshold on one run may produce a noticeably
+different video on a second run with identical inputs, due to the stochastic nature of
+Veo clip generation and Gemini's content drafting. Achieving consistent output quality
+at scale---where a channel operator expects a predictable, on-brand result from every
+pipeline run---remains the primary engineering challenge before this system is production-ready.
+
+The team ran the pipeline across all seven predefined topics and spot-checked outputs
+for factual accuracy against the cited source URLs. Posts on tax filing and banking
+showed the highest factual alignment with sources. Posts on housing and safety showed
+the highest rate of hedged or generic content.
+
+\subsection{Economics}
+
+The following cost estimates are approximate and based on public API pricing at time of
+writing. Actual costs vary with token counts, image resolution, and video length.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{Xll}
+\toprule
+\textbf{Component} & \textbf{Approx. Cost per Run} & \textbf{Notes} \\
+\midrule
+Gemini 2.5 Flash (Agents 1, 2, 4, CS) & \$0.01--\$0.05 & Depends on context length \\
+\texttt{gemini-embedding-001}          & \$0.001--\$0.005 & Per retrieval pass \\
+Google Search Grounding               & \$0.03--\$0.05 & Per grounded query \\
+Imagen 4 Ultra (image gen)            & \$0.04 & Per image \\
+Veo 3.1 Fast (5 scenes, $\sim$40s)    & \$0.50--\$0.75 & \$0.10--\$0.15/sec on Vertex AI \\
+Chirp3-HD TTS                         & \$0.01--\$0.02 & Per minute of audio \\
+NYC Open Data                         & \$0.00 & Free API \\
+\midrule
+\textbf{Estimated total per full run} & \textbf{\$0.10--\$0.20} & Excl. Veo \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+At \$0.10--\$0.20 per full content run (excluding Veo, which is in enterprise preview),
+a student organization producing five posts per week would spend approximately
+\$3--\$5 per month in API costs. This is well within the budget of a university
+department or student organization. If offered as a SaaS product, a subscription in
+the \$30--\$50 per month range for small organizations would provide a healthy margin
+while remaining accessible.
+
+\subsection{Competitive Landscape}
+
+The project occupies a niche that existing tools do not serve well.
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{General-purpose AI assistants} (ChatGPT, Gemini, Claude): Can answer
+    individual civic questions but do not monitor live data, produce formatted posts,
+    or maintain a consistent persona and publishing schedule. No civic data integration.
+  \item \textbf{Social media management platforms} (Buffer, Hootsuite, Sprout Social):
+    Excellent scheduling, analytics, and team workflow tools, but no native ability to
+    generate civic content from raw data sources. Content must be written by a human
+    and then scheduled.
+  \item \textbf{AI content generators} (Jasper, Copy.ai, Writesonic): Generate
+    marketing copy effectively but are not designed for civic information, do not
+    integrate structured government data sources, and have no multimodal video pipeline.
+  \item \textbf{University international student office portals}: Authoritative and
+    trustworthy, but static, text-heavy, not distributed through social platforms, and
+    not capable of responding to live policy or data changes in near real time.
+\end{itemize}
+
+The project's differentiator is the combination of live, structured civic data
+integration, domain-specific persona design, and full multimodal output (text + image
++ video) from a single pipeline run. No comparable tool targeting this specific
+audience and use case was identified in the competitive survey.
+
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Main Findings and Lessons}
+
+The International Student AI Influencer demonstrates that a coordinated set of
+specialized AI agents can bridge the gap between raw civic data and polished,
+student-appropriate social media content at low marginal cost. The key architectural
+lesson is that specialization pays: giving each agent a narrowly defined responsibility
+(retrieve, write, render, produce video, evaluate) produces better output than asking
+a single model to do everything in one prompt. The pipeline is also more debuggable
+as a result---failures and quality problems can be traced to a specific agent rather
+than to an opaque monolithic prompt.
+
+The most important honest finding is that technical quality and informational trustworthiness
+are not the same thing. The pipeline can produce content that is visually polished,
+grammatically correct, and structurally on-brand while being subtly wrong or too
+generic to be actionable. This gap is not solvable by making the models larger or the
+prompts more sophisticated---it requires the human approval gate and user testing called
+for in the roadmap.
+
+\subsection{Extensions and Roadmap}
+
+The immediate next steps, as defined in the project roadmap, are:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Source citations are already embedded in generated posts and displayed to the
+    user in the UI; the next step is ensuring citations appear consistently across all
+    output formats, including the video storyboard and published captions.
+  \item Implement a human approval gate in the publishing queue, requiring explicit
+    sign-off before any content moves from draft to live.
+  \item Conduct structured user testing with real international students, measuring
+    both content accuracy (fact-checking against sources) and perceived relevance
+    (student survey).
+  \item Build explicit content filters for sensitive domains (housing rights,
+    immigration compliance, safety guidance) that trigger additional human review or
+    disclaimer insertion.
+  \item Activate LinkedIn and Instagram publishing adapters to close the gap between
+    queue management and live distribution.
+  \item Expand platform support to TikTok, WhatsApp, and email newsletters, each of
+    which requires format and tone adaptation beyond the current LinkedIn/Instagram toggle.
+\end{itemize}
+
+Looking 12--24 months ahead, two developments in the AI landscape are most likely to
+change what this product can do. First, continued improvements in video generation
+models (Veo and its successors) will reduce per-scene generation time and improve lip
+sync accuracy, making the video pipeline practical to run at higher volumes. Second,
+improved grounding and citation frameworks will make it easier to build a verifiable
+chain from a published claim back to its authoritative source, which is the core
+requirement for trust in civic information content. A production version of this system
+should be built on that foundation---where every claim in a post carries a checkable
+source link, not merely a cited URL from a retrieval result.
+
+\subsection{Closing}
+
+The project establishes a technically credible foundation for a trust-ready civic AI
+influencer pipeline. It surfaces the right problems, builds an architecture that can
+accommodate the solutions, and is honest about the gap between what the prototype
+can do today and what a responsible production deployment would require. The path
+forward is clear: source verification, human oversight, and real student testing. Those
+three steps, more than any further model capability, are what would make this tool
+genuinely useful to the students it is designed to serve.
+
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{References}
+\addcontentsline{toc}{section}{References}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{enumerate}[leftmargin=2em, label={[\arabic*]}]
+
+  \item Google DeepMind. (2025). \textit{Gemini 2.5 Flash model documentation}.
+    Google AI for Developers.
+    \url{https://ai.google.dev/gemini-api/docs}
+
+  \item Google DeepMind. (2025). \textit{Imagen 4 on Vertex AI}.
+    Google Cloud Documentation.
+    \url{https://cloud.google.com/vertex-ai/generative-ai/docs/image/overview}
+
+  \item Google DeepMind. (2025). \textit{Veo on Vertex AI}.
+    Google Cloud Documentation.
+    \url{https://cloud.google.com/vertex-ai/generative-ai/docs/video/overview}
+
+  \item Google Cloud. (2025). \textit{Text-to-Speech: Chirp3-HD}.
+    Google Cloud Documentation.
+    \url{https://cloud.google.com/text-to-speech/docs}
+
+  \item NYC Open Data. (2025). \textit{NYC Jobs} (Dataset \texttt{kpav-sd4t}).
+    City of New York.
+    \url{https://data.cityofnewyork.us}
+
+  \item NYC Open Data. (2025). \textit{CUNY Enrollment} (Dataset \texttt{d44m-4xgv}).
+    City of New York.
+    \url{https://data.cityofnewyork.us}
+
+  \item Internal Revenue Service. (2025). \textit{Taxation of Nonresident Aliens (Publication 519)}.
+    \url{https://www.irs.gov/publications/p519}
+
+  \item U.S. Citizenship and Immigration Services. (2025). \textit{Students and Exchange
+    Visitors: F-1 and J-1 Visa Overview}.
+    \url{https://www.uscis.gov}
+
+  \item NASFAA. (2025). \textit{Financial Aid for International Students}.
+    National Association of Student Financial Aid Administrators.
+    \url{https://www.nasfaa.org}
+
+  \item FastAPI. (2025). \textit{FastAPI documentation}.
+    \url{https://fastapi.tiangolo.com}
+
+  \item Ziadé, T., \& Stinner, C. (2025). \textit{MoviePy documentation}.
+    \url{https://zulko.github.io/moviepy}
+
+  \item OpenAI. (2023). \textit{ChatGPT: Optimizing Language Models for Dialogue}.
+    OpenAI Blog. \emph{[Referenced for competitive analysis.]}
+
+  \item Buffer Inc. (2025). \textit{Buffer: Social Media Management}.
+    \url{https://buffer.com}
+
+  \item Hootsuite Inc. (2025). \textit{Hootsuite: Social Media Management}.
+    \url{https://hootsuite.com}
+
+\end{enumerate}
+
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\appendix
+\section{Environment Variable Reference}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{center}
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+\textbf{Variable} & \textbf{Purpose} & \textbf{Required} \\
+\midrule
+\texttt{GOOGLE\_API\_KEY}          & Gemini and embedding API access            & Yes \\
+\texttt{GOOGLE\_CLOUD\_PROJECT}    & Vertex AI project ID                       & Yes \\
+\texttt{GOOGLE\_CLOUD\_LOCATION}   & Vertex AI region (default: us-central1)    & Yes \\
+\texttt{NYC\_OPEN\_DATA\_APP\_TOKEN} & Socrata API token (raises rate limits)   & No \\
+\texttt{CORS\_ALLOW\_ORIGINS}      & Override default CORS whitelist            & No \\
+\texttt{VITE\_API\_BASE}           & Frontend API base URL                      & Yes (frontend) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Predefined Topic List}
+% ─────────────────────────────────────────────────────────────────────────────
+
+The backend \texttt{/topics} endpoint returns the following seven topics at startup:
+
+\begin{enumerate}[leftmargin=2em]
+  \item Opening a US bank account as an international student
+  \item Understanding your F-1 visa employment restrictions
+  \item Filing US taxes as a non-resident alien
+  \item Finding affordable housing in NYC as a student
+  \item Navigating NYC public transportation and city services
+  \item Student loan options for international students
+  \item Understanding your rights as an international student in the US
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Agent Quality Control Scoring Rubric}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Agent 4 scores output against the following seven criteria, each on a 1--10 scale.
+An aggregate score at or above 7 triggers a \texttt{PUBLISH} decision.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Criterion} & \textbf{What is evaluated} \\
+\midrule
+Accuracy       & Factual alignment between post claims and cited sources \\
+Tone           & Appropriateness of register and voice for the target audience \\
+Engagement     & Predicted reader interest, CTA clarity, and hashtag relevance \\
+Compliance     & Absence of implicit legal, financial, or immigration advice \\
+Platform fit   & Formatting, length, and structure appropriate to LinkedIn or Instagram \\
+Video script   & Coherence and flow of the SSML voice script across five scenes \\
+Video visual   & Alignment between visual prompts and the post narrative \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{document}

@@ -220,3 +220,77 @@
   font-weight: 600;
 }
 
+.tab-bar {
+  display: flex;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(10px);
+  width: fit-content;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tab-bar {
+    background: rgba(18, 19, 26, 0.45);
+  }
+}
+
+.tab-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--text-h);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 18px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, rgba(170, 59, 255, 0.85), rgba(0, 209, 255, 0.75));
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.avatar-preview {
+  width: 100%;
+  max-width: 300px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: block;
+  margin-top: 12px;
+}
+
+.avatar-status-ok {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.08);
+  font-size: 14px;
+}
+
+.avatar-status-warn {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  background: rgba(234, 179, 8, 0.08);
+  font-size: 14px;
+}
+
